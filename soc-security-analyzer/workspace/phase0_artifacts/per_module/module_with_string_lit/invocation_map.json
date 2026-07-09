@@ -1,0 +1,33 @@
+{
+  "module": "module_with_string_lit",
+  "slang": {
+    "base_command": "slang --lint-only",
+    "files": [],
+    "include_paths": [],
+    "required_companions": [],
+    "stubs_required": [],
+    "status": "TOOL_UNAVAILABLE",
+    "validation_output_summary": "Tool binary not found in PATH",
+    "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
+  },
+  "verilator": {
+    "base_command": "verilator --lint-only -Wall",
+    "files": [],
+    "include_paths": [],
+    "required_companions": [],
+    "stubs_required": [],
+    "status": "TOOL_UNAVAILABLE",
+    "validation_output_summary": "Tool binary not found in PATH",
+    "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
+  },
+  "verible": {
+    "base_command": "verible-verilog-lint",
+    "files": [],
+    "include_paths": [],
+    "required_companions": [],
+    "stubs_required": [],
+    "status": "TOOL_UNAVAILABLE",
+    "validation_output_summary": "Tool binary not found in PATH",
+    "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
+  }
+}

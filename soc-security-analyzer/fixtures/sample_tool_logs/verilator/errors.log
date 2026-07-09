@@ -1,0 +1,5 @@
+%Warning-UNUSED: hw/ip/uart/rtl/uart_core.sv:45:8: Signal is not driven, nor used: 'debug_out'
+                : Use "/* verilator public */" to keep it
+%Error: hw/ip/uart/rtl/uart_core.sv:12:3: Syntax error, unexpected IDENTIFIER
+      assign x = ;
+                 ^

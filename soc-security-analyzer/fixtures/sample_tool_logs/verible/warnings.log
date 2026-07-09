@@ -1,0 +1,2 @@
+hw/ip/uart/rtl/uart_core.sv:12:80: Line width exceeds 100 characters. [line-length]
+hw/ip/uart/rtl/uart_core.sv:25:5: Style guideline violation: space after parenthesis. [style-paren]

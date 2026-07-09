@@ -1,0 +1,76 @@
+{
+  "files": {
+    "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_inline_code_comment.sv": {
+      "defines_modules": [
+        "module_with_inline_code_comment"
+      ],
+      "defines_packages": [],
+      "includes": [],
+      "package_imports": [],
+      "instantiations": []
+    },
+    "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_keyword_comment.sv": {
+      "defines_modules": [
+        "module_with_keyword_comment"
+      ],
+      "defines_packages": [],
+      "includes": [],
+      "package_imports": [],
+      "instantiations": []
+    },
+    "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_nested_blocks.sv": {
+      "defines_modules": [
+        "module_with_nested_blocks"
+      ],
+      "defines_packages": [],
+      "includes": [],
+      "package_imports": [],
+      "instantiations": []
+    },
+    "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_no_keyword_comment.sv": {
+      "defines_modules": [
+        "module_with_no_keyword_comment"
+      ],
+      "defines_packages": [],
+      "includes": [],
+      "package_imports": [],
+      "instantiations": []
+    },
+    "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_string_lit.sv": {
+      "defines_modules": [
+        "module_with_string_lit"
+      ],
+      "defines_packages": [],
+      "includes": [],
+      "package_imports": [],
+      "instantiations": []
+    }
+  },
+  "modules": {
+    "module_with_inline_code_comment": {
+      "defined_in": "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_inline_code_comment.sv",
+      "instantiates": [],
+      "instantiated_by": []
+    },
+    "module_with_keyword_comment": {
+      "defined_in": "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_keyword_comment.sv",
+      "instantiates": [],
+      "instantiated_by": []
+    },
+    "module_with_nested_blocks": {
+      "defined_in": "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_nested_blocks.sv",
+      "instantiates": [],
+      "instantiated_by": []
+    },
+    "module_with_no_keyword_comment": {
+      "defined_in": "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_no_keyword_comment.sv",
+      "instantiates": [],
+      "instantiated_by": []
+    },
+    "module_with_string_lit": {
+      "defined_in": "C:\\sathish\\DAC\\soc-security-analyzer\\fixtures\\sample_rtl\\module_with_string_lit.sv",
+      "instantiates": [],
+      "instantiated_by": []
+    }
+  }
+}

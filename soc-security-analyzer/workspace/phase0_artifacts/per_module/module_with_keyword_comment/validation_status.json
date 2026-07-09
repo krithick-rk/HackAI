@@ -1,0 +1,6 @@
+{
+  "module": "module_with_keyword_comment",
+  "slang": "TOOL_UNAVAILABLE",
+  "verilator": "TOOL_UNAVAILABLE",
+  "verible": "TOOL_UNAVAILABLE"
+}

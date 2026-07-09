@@ -1,0 +1,6 @@
+{
+  "module": "module_with_no_keyword_comment",
+  "tool": "verilator",
+  "attempts": [],
+  "hypothesis": "Verify binary availability or dependencies"
+}
