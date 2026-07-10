@@ -113,10 +113,25 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
         package_files = sorted(list(all_packages_to_include))
         
         # 6. File arrays for commands
+        # Prepend prim_assert.sv if available to define global assertion & FSM macros
+        prim_assert_path = None
+        for f in dependency_graph.get("files", {}).keys():
+            if f.endswith("hw/ip/prim/rtl/prim_assert.sv"):
+                prim_assert_path = os.path.abspath(f)
+                break
+        if not prim_assert_path:
+            # Fallback path
+            prim_assert_path = "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv"
+            
+        macro_files = []
+        if prim_assert_path and os.path.exists(prim_assert_path):
+            macro_files.append(prim_assert_path)
+            
         # Slang and Verilator require packages compiled first, then the target file, then companions
-        full_file_list = package_files + [defining_file] + sorted(list(child_files_clean))
+        full_file_list = macro_files + package_files + [defining_file] + sorted(list(child_files_clean))
         # Verible checks file-by-file but needs package context compiled first
-        verible_file_list = package_files + [defining_file]
+        verible_file_list = macro_files + package_files + [defining_file]
+
 
         
         # Setup slang

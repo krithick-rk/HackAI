@@ -146,7 +146,7 @@ def main():
     
     # Print status summary
     validated_count = 0
-    partial_count = 0
+    missing_stub_count = 0
     failed_count = 0
     
     for mod in maps.keys():
@@ -162,13 +162,13 @@ def main():
                     validated_count += 1
                 elif any(s in ("FAILED", "TOOL_UNAVAILABLE") for s in statuses):
                     failed_count += 1
-                else:
-                    partial_count += 1
+                elif any(s == "NEEDS_STUB" for s in statuses):
+                    missing_stub_count += 1
                     
     print(f"\nPhase 0 complete. Status summary:")
     print(f"   Total modules processed: {len(maps)}")
     print(f"   Fully Validated:         {validated_count}")
-    print(f"   Partially Validated:     {partial_count}")
+    print(f"   Missing Stub:            {missing_stub_count}")
     print(f"   Failed/Unavailable:      {failed_count}")
 
 if __name__ == "__main__":

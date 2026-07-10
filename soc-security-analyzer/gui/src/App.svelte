@@ -389,11 +389,11 @@
               </div>
               <div class="stat-box partial">
                 <span class="number">{runStatus.partially_validated}</span>
-                <span class="label">Partially Validated</span>
+                <span class="label">Missing Stub</span>
               </div>
               <div class="stat-box danger">
                 <span class="number">{runStatus.failed}</span>
-                <span class="label">Failed / Missing Stubs</span>
+                <span class="label">Failed</span>
               </div>
             </div>
           </section>
@@ -407,15 +407,14 @@
                 <select bind:value={statusFilter} class="status-select">
                   <option value="ALL">All Statuses</option>
                   <option value="VALIDATED">Fully Validated</option>
-                  <option value="PARTIAL">Partially Validated</option>
+                  <option value="PARTIAL">Missing Stub</option>
                   <option value="FAILED">Failed</option>
                   <option value="UNVALIDATED">Queued</option>
                 </select>
               </div>
             </div>
-
             <div class="table-container">
-              <table class="module-table">
+              <table class="modules-table">
                 <thead>
                   <tr>
                     <th>Module Name</th>
@@ -428,7 +427,7 @@
                     <tr>
                       <td><strong>{mod.name}</strong></td>
                       <td>
-                        <span class="badge status-{mod.status.toLowerCase()}">{mod.status}</span>
+                        <span class="badge status-{mod.status.toLowerCase()}">{mod.status === 'PARTIAL' ? 'MISSING STUB' : mod.status}</span>
                       </td>
                       <td class="file-cell" title={mod.defined_in}>{mod.defined_in}</td>
                     </tr>

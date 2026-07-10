@@ -292,7 +292,7 @@ def api_status():
                             elif all(s == "VALIDATED" for s in statuses):
                                 status = "VALIDATED"
                                 validated += 1
-                            elif any(s in ("FAILED", "TOOL_UNAVAILABLE") for s in statuses):
+                            elif any(s in ("FAILED", "TOOL_UNAVAILABLE", "NEEDS_STUB") for s in statuses):
                                 status = "FAILED"
                                 failed += 1
                             else:
