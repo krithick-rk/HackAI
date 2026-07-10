@@ -310,14 +310,27 @@ def api_status():
                                 except Exception:
                                     pass
                             
-                            if status == "FAILED":
-                                err_file = os.path.join(mod_path, "failure_report_slang.json")
-                                if os.path.exists(err_file):
-                                    with open(err_file, 'r') as ef:
-                                        edata = json.load(ef)
-                                        attempts = edata.get("attempts", [])
-                                        if attempts:
-                                            errors = [attempts[-1].get("raw_output", "")]
+                            errors = {}
+                            for filename in os.listdir(mod_path):
+                                if filename.startswith("failure_report_") and filename.endswith(".json"):
+                                    tool_name = filename[len("failure_report_"):-5]
+                                    err_file = os.path.join(mod_path, filename)
+                                    try:
+                                        with open(err_file, 'r') as ef:
+                                            edata = json.load(ef)
+                                            attempts = edata.get("attempts", [])
+                                            if attempts:
+                                                errors[tool_name] = attempts[-1].get("raw_output", "")
+                                    except Exception:
+                                        pass
+                            
+                            stubs = []
+                            stubs_dir = os.path.join(mod_path, "stubs")
+                            if os.path.exists(stubs_dir):
+                                try:
+                                    stubs = sorted(os.listdir(stubs_dir))
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                 
@@ -325,7 +338,8 @@ def api_status():
                     "name": mod_name,
                     "status": status,
                     "defined_in": defined_in,
-                    "errors": errors
+                    "errors": errors if errors else None,
+                    "stubs": stubs
                 })
 
     progress = 0

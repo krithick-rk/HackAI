@@ -25,7 +25,8 @@
     name: string;
     status: 'VALIDATED' | 'PARTIAL' | 'FAILED' | 'UNVALIDATED';
     defined_in: string;
-    errors: string[] | null;
+    errors: Record<string, string> | null;
+    stubs?: string[];
   }
 
   interface RunStatus {
@@ -70,6 +71,7 @@
   let filterText: string = '';
   let statusFilter: string = 'ALL';
   let showLaunchModal: boolean = false;
+  let selectedModuleForDetail: ModuleStatus | null = null;
 
   // Helper to call backend APIs
   async function apiCall(endpoint: string, payload?: any) {
@@ -427,7 +429,19 @@
                     <tr>
                       <td><strong>{mod.name}</strong></td>
                       <td>
-                        <span class="badge status-{mod.status.toLowerCase()}">{mod.status === 'PARTIAL' ? 'MISSING STUB' : mod.status}</span>
+                        {#if mod.status === 'FAILED' || mod.status === 'PARTIAL'}
+                          <span 
+                            class="badge status-{mod.status.toLowerCase()} clickable-badge" 
+                            title="Click to view error diagnostics and stub details"
+                            on:click={() => selectedModuleForDetail = mod}
+                          >
+                            {mod.status === 'PARTIAL' ? 'MISSING STUB' : mod.status}
+                          </span>
+                        {:else}
+                          <span class="badge status-{mod.status.toLowerCase()}">
+                            {mod.status}
+                          </span>
+                        {/if}
                       </td>
                       <td class="file-cell" title={mod.defined_in}>{mod.defined_in}</td>
                     </tr>
@@ -462,6 +476,56 @@
         <div class="modal-actions">
           <button class="btn btn-secondary" on:click={() => { showLaunchModal = false; step = 'results'; }}>Load Previous Results</button>
           <button class="btn btn-primary" on:click={confirmCleanRun}>Run Clean Validation</button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  {#if selectedModuleForDetail}
+    <div class="modal-backdrop" on:click={() => selectedModuleForDetail = null}>
+      <div class="modal card glass detail-modal" on:click|stopPropagation>
+        <div class="detail-header">
+          <h2>Module Diagnostic Report: <code>{selectedModuleForDetail.name}</code></h2>
+          <button class="close-btn" on:click={() => selectedModuleForDetail = null}>&times;</button>
+        </div>
+        
+        <div class="detail-body">
+          <div class="detail-row">
+            <span class="detail-label">Status:</span>
+            <span class="badge status-{selectedModuleForDetail.status.toLowerCase()}">
+              {selectedModuleForDetail.status === 'PARTIAL' ? 'MISSING STUB' : selectedModuleForDetail.status}
+            </span>
+          </div>
+          
+          <div class="detail-row">
+            <span class="detail-label">Source File:</span>
+            <span class="detail-value-path">{selectedModuleForDetail.defined_in}</span>
+          </div>
+
+          <div class="detail-section">
+            <h3>Stubs Created & Compiled</h3>
+            {#if selectedModuleForDetail.stubs && selectedModuleForDetail.stubs.length > 0}
+              <ul class="stubs-list">
+                {#each selectedModuleForDetail.stubs as stub}
+                  <li><code>{stub}</code></li>
+                {/each}
+              </ul>
+            {:else}
+              <p class="empty-text">No stub files were generated or required for this module.</p>
+            {/if}
+          </div>
+
+          {#if selectedModuleForDetail.errors && Object.keys(selectedModuleForDetail.errors).length > 0}
+            <div class="detail-section">
+              <h3>Compiler Error Diagnostics</h3>
+              {#each Object.entries(selectedModuleForDetail.errors) as [tool, errText]}
+                <div class="tool-error-box">
+                  <div class="tool-error-header">{tool} Output</div>
+                  <pre class="tool-error-pre">{errText}</pre>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -966,5 +1030,144 @@
     justify-content: flex-end;
     gap: 1rem;
     margin-top: 1.5rem;
+  }
+
+  .clickable-badge {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .clickable-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.1);
+    opacity: 0.9;
+  }
+
+  .detail-modal {
+    max-width: 800px;
+    width: 90%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .detail-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+
+  .close-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .close-btn:hover {
+    color: #fff;
+  }
+
+  .detail-body {
+    text-align: left;
+  }
+
+  .detail-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    align-items: center;
+    font-size: 0.9rem;
+  }
+
+  .detail-label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 100px;
+  }
+
+  .detail-value-path {
+    font-family: monospace;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    word-break: break-all;
+  }
+
+  .detail-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 1.25rem;
+  }
+
+  .detail-section h3 {
+    margin-top: 0;
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+  }
+
+  .stubs-list {
+    margin: 0;
+    padding-left: 1.25rem;
+    color: var(--text-secondary);
+  }
+
+  .stubs-list li {
+    margin-bottom: 0.25rem;
+  }
+
+  .stubs-list code {
+    color: var(--accent-cyan);
+    background: rgba(0, 223, 216, 0.05);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+  }
+
+  .empty-text {
+    color: var(--text-secondary);
+    font-style: italic;
+    margin: 0;
+    font-size: 0.85rem;
+  }
+
+  .tool-error-box {
+    margin-top: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .tool-error-header {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .tool-error-pre {
+    margin: 0;
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 0.8rem;
+    overflow-x: auto;
+    background: #05070c;
+    color: #f8f8f2;
+    white-space: pre-wrap;
+    max-height: 250px;
+    overflow-y: auto;
   }
 </style>
