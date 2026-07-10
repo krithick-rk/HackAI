@@ -82,6 +82,14 @@
 
   let folderTree: FolderNode[] = [];
   let expandedNodes: Set<string> = new Set();
+  let hideUnselected: boolean = false;
+
+  function toggleHideUnselected() {
+    hideUnselected = !hideUnselected;
+    if (hideUnselected) {
+      autoExpandTree();
+    }
+  }
 
   function buildFolderTree(folders: string[], suggestedExclusions: string[]): FolderNode[] {
     const rootNodes: FolderNode[] = [];
@@ -135,8 +143,7 @@
         if (res.hasExcluded) hasExcluded = true;
       }
       
-      const isRoot = !node.path.includes('/');
-      if ((hasSelected && hasExcluded) || isRoot) {
+      if (hasSelected && hasExcluded) {
         newExpanded.add(node.path);
       }
       
@@ -403,13 +410,13 @@
             <button 
               type="button"
               class="btn btn-secondary btn-sm" 
-              on:click={autoExpandTree} 
-              title="Collapse all folders that do not have any selected sub-folders"
+              on:click={toggleHideUnselected} 
+              title="Toggle collapse / hide of unselected folders"
             >
-              Collapse Unselected
+              {hideUnselected ? "Show All Folders" : "Collapse Unselected"}
             </button>
           </div>
-          <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs. Unselected folders will be collapsed into parent folders when you click "Collapse Unselected".</p>
+          <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs. Unselected folders will be collapsed and hidden when you click "Collapse Unselected".</p>
           
           <div class="tree-list">
             {#each folderTree as rootNode}
@@ -417,6 +424,7 @@
                 node={rootNode} 
                 {excludedFolders} 
                 {expandedNodes} 
+                {hideUnselected}
                 on:toggleCheck={handleTreeCheckToggle}
                 on:toggleExpand={handleTreeExpandToggle}
               />
