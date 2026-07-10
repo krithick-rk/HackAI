@@ -353,6 +353,44 @@ def validate_tool_for_module(
                         tool_info["include_paths"].append(best_dir)
                     stub_attempt += 1
                     continue
+                else:
+                    # Generate stub package
+                    stub_dir = os.path.join(output_dir, "per_module", module_name, "stubs")
+                    os.makedirs(stub_dir, exist_ok=True)
+                    stub_file = os.path.join(stub_dir, f"{missing_package}.sv")
+                    
+                    with open(stub_file, 'w', encoding='utf-8') as sf:
+                        sf.write(f"package {missing_package};\n")
+                        if missing_package == "rv_core_ibex_peri_pkg":
+                            sf.write("  typedef struct packed { logic en; logic [31:0] matching_region; logic [31:0] remap_addr; } region_cfg_t;\n")
+                            sf.write("  typedef logic [1:0] alert_event_t;\n")
+                            sf.write("  parameter int NumRegions = 2;\n")
+                            sf.write("  parameter int NumAlerts = 4;\n")
+                            sf.write("  parameter logic [1:0] EventOff = 2'b00;\n")
+                        elif missing_package == "rv_core_ibex_peri_reg_pkg":
+                            sf.write("  typedef struct packed { logic q; logic qe; } field_t;\n")
+                            sf.write("  typedef struct packed { field_t fatal_sw_err; field_t recov_sw_err; field_t fatal_hw_err; field_t recov_hw_err; } alert_test_t;\n")
+                            sf.write("  typedef struct packed { logic q; } sw_alert_t;\n")
+                            sf.write("  typedef struct packed {\n")
+                            sf.write("    logic [1:0] ibus_addr_en;\n")
+                            sf.write("    logic [1:0] [31:0] ibus_addr_matching;\n")
+                            sf.write("    logic [1:0] [31:0] ibus_remap_addr;\n")
+                            sf.write("    logic [1:0] dbus_addr_en;\n")
+                            sf.write("    logic [1:0] [31:0] dbus_addr_matching;\n")
+                            sf.write("    logic [1:0] [31:0] dbus_remap_addr;\n")
+                            sf.write("    alert_test_t alert_test;\n")
+                            sf.write("    sw_alert_t [1:0] sw_alert;\n")
+                            sf.write("  } rv_core_ibex_peri_reg2hw_t;\n")
+                            sf.write("  typedef struct packed { logic d; logic de; } hw_field_t;\n")
+                            sf.write("  typedef struct packed { hw_field_t reg_intg_err; hw_field_t fatal_intg_err; hw_field_t fatal_core_err; hw_field_t recov_core_err; } err_status_t;\n")
+                            sf.write("  typedef struct packed { err_status_t err_status; } rv_core_ibex_peri_hw2reg_t;\n")
+                        sf.write(f"endpackage : {missing_package}\n")
+                        
+                    stubs_created.append(stub_file)
+                    if stub_file not in current_files:
+                        current_files.insert(0, stub_file)
+                    stub_attempt += 1
+                    continue
 
             # Check for missing primitive
             missing_module = detect_missing_primitive(stdout_err)
