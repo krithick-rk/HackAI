@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.toast
+.spider
+.ipynb_checkpoints
+*.egg-info/
+.eggs/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node / JS
+node_modules/
+dist/
+.node/
+
+# Project Workspaces & Artifacts
+workspace/
+**/workspace/
+*.log
+console_stream.json

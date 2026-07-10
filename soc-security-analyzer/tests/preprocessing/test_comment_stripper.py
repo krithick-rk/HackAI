@@ -1,5 +1,5 @@
 import pytest
-from soc_analyzer.preprocessing.comment_stripper import strip_comments
+from src.soc_analyzer.preprocessing.comment_stripper import strip_comments
 
 def test_inline_comment_with_keyword():
     source = "assign a = b; // contains secret key!"

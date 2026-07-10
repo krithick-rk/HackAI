@@ -1,6 +1,6 @@
 import os
 import pytest
-from soc_analyzer.phase0.invocation_map_builder import build_invocation_maps
+from src.soc_analyzer.phase0.invocation_map_builder import build_invocation_maps
 
 def test_build_invocation_maps():
     # Build a mock dependency graph

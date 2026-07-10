@@ -1,7 +1,7 @@
 import re
 import sys
 from typing import Protocol, Dict, List, Any
-from soc_analyzer.common.schemas import CompressedLog, ErrorWarningDetail
+from src.soc_analyzer.common.schemas import CompressedLog, ErrorWarningDetail
 
 class ToolLogParser(Protocol):
     def parse(self, raw_output: str) -> dict:

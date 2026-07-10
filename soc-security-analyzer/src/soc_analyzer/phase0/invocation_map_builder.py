@@ -1,7 +1,7 @@
 import os
 from typing import Dict, Set, Tuple, List, Any
-from soc_analyzer.common.fs_utils import write_json_artifact
-from soc_analyzer.common.schemas import PerModuleInvocationMap, ToolInvocationInfo
+from src.soc_analyzer.common.fs_utils import write_json_artifact
+from src.soc_analyzer.common.schemas import PerModuleInvocationMap, ToolInvocationInfo
 
 def get_transitive_dependencies(module_name: str, modules_map: dict, visited: Set[str] = None) -> Tuple[Set[str], Set[str]]:
     """Recursively finds all modules instantiated by module_name and the files defining them."""
@@ -91,11 +91,33 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
         # 4. Companions: basenames of child files
         required_companions = sorted(list({os.path.basename(cf) for cf in child_files_clean}))
         
-        # 5. File arrays for commands
-        # Slang and Verilator require the target file and all child companion files
-        full_file_list = [defining_file] + sorted(list(child_files_clean))
-        # Verible checks file-by-file
-        verible_file_list = [defining_file]
+        # 5. Packages: resolve package imports of all involved files recursively
+        packages_map = dependency_graph.get("packages", {})
+        all_packages_to_include = set()
+        visited_pkgs = set()
+        
+        def add_packages_for_file(filepath):
+            fdata = files_map.get(filepath, {})
+            imports = fdata.get("package_imports", [])
+            for pkg in imports:
+                if pkg not in visited_pkgs:
+                    visited_pkgs.add(pkg)
+                    pkg_file = packages_map.get(pkg)
+                    if pkg_file:
+                        all_packages_to_include.add(os.path.abspath(pkg_file))
+                        add_packages_for_file(pkg_file)
+                        
+        for f in all_involved_files:
+            add_packages_for_file(f)
+            
+        package_files = sorted(list(all_packages_to_include))
+        
+        # 6. File arrays for commands
+        # Slang and Verilator require packages compiled first, then the target file, then companions
+        full_file_list = package_files + [defining_file] + sorted(list(child_files_clean))
+        # Verible checks file-by-file but needs package context compiled first
+        verible_file_list = package_files + [defining_file]
+
         
         # Setup slang
         slang_info: ToolInvocationInfo = {

@@ -4,9 +4,9 @@ import shutil
 import subprocess
 import re
 from typing import Dict, List, Any, Tuple
-from soc_analyzer.preprocessing.log_compressor import compress_log
-from soc_analyzer.common.fs_utils import write_json_artifact, read_json_artifact
-from soc_analyzer.common.schemas import PerModuleInvocationMap, ToolInvocationInfo
+from src.soc_analyzer.preprocessing.log_compressor import compress_log
+from src.soc_analyzer.common.fs_utils import write_json_artifact, read_json_artifact
+from src.soc_analyzer.common.schemas import PerModuleInvocationMap, ToolInvocationInfo
 
 # Binary mapping
 BIN_MAP = {
@@ -23,16 +23,17 @@ RETRY_FLAGS = {
         ["--error-limit", "0", "--allow-use-before-declare"] # Attempt 3: Even more permissive
     ],
     "verilator": [
-        ["-Wall"],                                          # Attempt 1: Base Wall
-        ["-Wall", "-Wno-fatal"],                            # Attempt 2: Wall but don't fail on warnings
-        ["-Wno-fatal", "-Wno-lint", "-Wno-style"]           # Attempt 3: Suppress style/lint errors
+        ["--lint-only", "-Wall"],                                          # Attempt 1: Base Wall
+        ["--lint-only", "-Wall", "-Wno-fatal"],                            # Attempt 2: Wall but don't fail on warnings
+        ["--lint-only", "-Wno-fatal", "-Wno-lint", "-Wno-style"]           # Attempt 3: Suppress style/lint errors
     ],
     "verible": [
         [],                                                 # Attempt 1: Base
-        ["--rules=-line-length"],                           # Attempt 2: Ignore line length limits
-        ["--rules=-line-length,-no-unused-parameters"]      # Attempt 3: Suppress common warnings
+        ["--nolint_fatal"],                                 # Attempt 2: Ignore style errors
+        ["--nolint_fatal", "--rules=-line-length"]          # Attempt 3: Ignore style errors + line length limits
     ]
 }
+
 
 # Regex to detect missing module/primitive from outputs
 MISSING_MODULE_PATTERNS = [
