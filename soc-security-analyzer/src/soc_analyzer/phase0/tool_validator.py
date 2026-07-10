@@ -114,6 +114,88 @@ def detect_missing_primitive(output: str) -> str | None:
             return match.group(1).strip()
     return None
 
+# Regex to detect missing packages from outputs
+MISSING_PACKAGE_PATTERNS = [
+    re.compile(r"Import package not found:\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"package\s+'([^']+)'\s+not found", re.IGNORECASE),
+    re.compile(r"could not find package\s+'([^']+)'", re.IGNORECASE),
+    re.compile(r"cannot find package\s+'([^']+)'", re.IGNORECASE),
+    re.compile(r"unknown package\s+'([^']+)'", re.IGNORECASE),
+]
+
+def detect_missing_package(output: str) -> str | None:
+    """Scans the tool output to check if there is a missing package error. Returns its name if found."""
+    for pattern in MISSING_PACKAGE_PATTERNS:
+        match = pattern.search(output)
+        if match:
+            return match.group(1).strip()
+    return None
+
+def find_all_package_files(filename: str, base_dir: str = "/home/hackdac/opentitan") -> List[str]:
+    """Recursively searches for all files matching filename in base_dir, workspace, and home."""
+    found_paths = []
+    skip_dirs = {".git", ".github", "obj_dir", "build", "workspace", "node_modules"}
+    
+    # 1. Walk base_dir
+    if os.path.exists(base_dir):
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if filename in files:
+                found_paths.append(os.path.join(root, filename))
+                
+    # 2. Walk workspace
+    workspace_dir = "/home/hackdac/Documents/AI/hackAI"
+    if os.path.exists(workspace_dir) and os.path.abspath(workspace_dir) != os.path.abspath(base_dir):
+        for root, dirs, files in os.walk(workspace_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if filename in files:
+                found_paths.append(os.path.join(root, filename))
+                
+    # 3. Walk home, excluding hidden directories
+    home_dir = "/home/hackdac"
+    if os.path.exists(home_dir):
+        for root, dirs, files in os.walk(home_dir):
+            dirs[:] = [
+                d for d in dirs 
+                if not d.startswith(".") 
+                and d not in skip_dirs 
+                and d not in {"Downloads", "Desktop", "Pictures", "Music", "Videos", "Templates", "Public"}
+            ]
+            if filename in files:
+                found_paths.append(os.path.join(root, filename))
+                
+    return list(set(found_paths))
+
+def choose_best_package_file(found_paths: List[str], module_name: str) -> str | None:
+    if not found_paths:
+        return None
+    if len(found_paths) == 1:
+        return found_paths[0]
+        
+    # Prioritize paths that contain "earlgrey" if module name contains "earlgrey"
+    if "earlgrey" in module_name.lower():
+        earlgrey_paths = [p for p in found_paths if "earlgrey" in p.lower()]
+        if earlgrey_paths:
+            return earlgrey_paths[0]
+            
+    # Prioritize paths that contain "darjeeling" if module name contains "darjeeling"
+    if "darjeeling" in module_name.lower():
+        darjeeling_paths = [p for p in found_paths if "darjeeling" in p.lower()]
+        if darjeeling_paths:
+            return darjeeling_paths[0]
+            
+    # General matching: if any folder name in the path matches parts of the module name
+    module_parts = set(re.split(r"[-_]", module_name.lower()))
+    best_score = -1
+    best_path = found_paths[0]
+    for p in found_paths:
+        path_parts = set(re.split(r"[\\/_-]", p.lower()))
+        intersection = module_parts.intersection(path_parts)
+        if len(intersection) > best_score:
+            best_score = len(intersection)
+            best_path = p
+    return best_path
+
 def build_command_args(tool_name: str, base_binary: str, flags: List[str], include_paths: List[str], files: List[str]) -> List[str]:
     """Constructs the command list for subprocess execution based on the tool syntax."""
     cmd = [base_binary] + flags
@@ -130,6 +212,66 @@ def build_command_args(tool_name: str, base_binary: str, flags: List[str], inclu
             
     cmd += files
     return cmd
+
+def sort_files_by_dependency(files: List[str]) -> List[str]:
+    """Sorts SystemVerilog files so that package definitions are compiled before their imports/usage."""
+    pkg_defs = {} # pkg_name -> file_path
+    file_imports = {} # file_path -> set(imported_pkg_names)
+    
+    package_def_re = re.compile(r"package\s+(\w+)\s*;", re.MULTILINE)
+    import_re = re.compile(r"\b(\w+_pkg)::", re.MULTILINE)
+    
+    for f in files:
+        if not os.path.exists(f):
+            continue
+        try:
+            with open(f, 'r', encoding='utf-8', errors='ignore') as fh:
+                content = fh.read()
+            # Find defined packages
+            defs = package_def_re.findall(content)
+            for d in defs:
+                pkg_defs[d] = f
+            # Find imported packages
+            imports = set(import_re.findall(content))
+            file_imports[f] = imports
+        except Exception:
+            file_imports[f] = set()
+            
+    # Build dependency graph between files
+    dependencies = {f: set() for f in files}
+    for f in files:
+        imported_pkgs = file_imports.get(f, set())
+        for pkg in imported_pkgs:
+            if pkg in pkg_defs:
+                dep_file = pkg_defs[pkg]
+                if dep_file != f:
+                    dependencies[f].add(dep_file)
+                    
+    # Topological sort (DFS)
+    visited = {}
+    temp_visited = {}
+    sorted_files = []
+    
+    def visit(f):
+        if f in temp_visited:
+            return
+        if f not in visited:
+            temp_visited[f] = True
+            for dep in dependencies.get(f, []):
+                visit(dep)
+            temp_visited.pop(f)
+            visited[f] = True
+            sorted_files.append(f)
+            
+    for f in files:
+        if f not in visited:
+            visit(f)
+            
+    for f in files:
+        if f not in sorted_files:
+            sorted_files.append(f)
+            
+    return sorted_files
 
 def validate_tool_for_module(
     module_name: str,
@@ -166,6 +308,7 @@ def validate_tool_for_module(
         stub_attempt = 0
         
         while stub_attempt < stub_retry_limit:
+            current_files = sort_files_by_dependency(current_files)
             cmd = build_command_args(tool_name, binary_name, flags, tool_info["include_paths"], current_files)
             
             try:
@@ -185,6 +328,32 @@ def validate_tool_for_module(
                 
             compressed = compress_log(tool_name, stdout_err, exit_code)
             
+            # Check for missing package
+            missing_package = detect_missing_package(stdout_err)
+            if exit_code != 0 and missing_package:
+                package_filenames = [f"{missing_package}.sv", f"{missing_package}.svh", f"{missing_package}.v"]
+                opentitan_base = "/home/hackdac/opentitan"
+                for f in current_files:
+                    if "opentitan" in f:
+                        idx = f.find("opentitan")
+                        if idx != -1:
+                            opentitan_base = f[:idx + len("opentitan")]
+                            break
+                            
+                found_paths = []
+                for p_fn in package_filenames:
+                    found_paths.extend(find_all_package_files(p_fn, opentitan_base))
+                    
+                best_file = choose_best_package_file(found_paths, module_name)
+                if best_file and os.path.exists(best_file):
+                    if best_file not in current_files:
+                        current_files.insert(0, best_file)
+                    best_dir = os.path.abspath(os.path.dirname(best_file))
+                    if best_dir not in tool_info["include_paths"]:
+                        tool_info["include_paths"].append(best_dir)
+                    stub_attempt += 1
+                    continue
+
             # Check for missing primitive
             missing_module = detect_missing_primitive(stdout_err)
             if exit_code != 0 and missing_module:
