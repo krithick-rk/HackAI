@@ -35,6 +35,32 @@ RETRY_FLAGS = {
 }
 
 
+# Regex to detect missing include files from outputs
+MISSING_INCLUDE_PATTERNS = [
+    re.compile(r"Cannot find include file:\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"cannot find include file\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"could not find include file\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"Cannot find include file\s*'([^']+)'", re.IGNORECASE),
+]
+
+def detect_missing_include(output: str) -> str | None:
+    """Scans the tool output to check if there is a missing include file error. Returns its name if found."""
+    for pattern in MISSING_INCLUDE_PATTERNS:
+        match = pattern.search(output)
+        if match:
+            return match.group(1).strip()
+    return None
+
+def find_include_file(filename: str, base_dir: str = "/home/hackdac/opentitan") -> str | None:
+    """Recursively searches for a file in the base directory, skipping VCS and DV/formal test dirs."""
+    skip_dirs = {".git", "dv", "pre_dv", "formal"}
+    for root, dirs, files in os.walk(base_dir):
+        # Prune search in place
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        if filename in files:
+            return os.path.join(root, filename)
+    return None
+
 # Regex to detect missing module/primitive from outputs
 MISSING_MODULE_PATTERNS = [
     re.compile(r"Cannot find file containing module:\s*'([^']+)'", re.IGNORECASE),
@@ -105,8 +131,8 @@ def validate_tool_for_module(
     for attempt_idx, flags in enumerate(flags_list):
         attempt_num = attempt_idx + 1
         
-        # Stub resolution loop: if command fails due to missing module, generate stub and retry immediately
-        stub_retry_limit = 5
+        # Stub resolution loop: if command fails due to missing module or missing include, resolve and retry immediately
+        stub_retry_limit = 10
         stub_attempt = 0
         
         while stub_attempt < stub_retry_limit:
@@ -167,7 +193,27 @@ def validate_tool_for_module(
                     stub_attempt += 1
                     final_status = "NEEDS_STUB"
                     continue
-                
+                    
+            # Check for missing include file
+            missing_include = detect_missing_include(stdout_err)
+            if exit_code != 0 and missing_include:
+                # Find opentitan base dir from file paths
+                opentitan_base = "/home/hackdac/opentitan"
+                for f in current_files:
+                    if "opentitan" in f:
+                        idx = f.find("opentitan")
+                        if idx != -1:
+                            opentitan_base = f[:idx + len("opentitan")]
+                            break
+                            
+                resolved_include_file = find_include_file(missing_include, opentitan_base)
+                if resolved_include_file and os.path.exists(resolved_include_file):
+                    include_dir = os.path.abspath(os.path.dirname(resolved_include_file))
+                    if include_dir not in tool_info["include_paths"]:
+                        tool_info["include_paths"].append(include_dir)
+                    stub_attempt += 1
+                    continue
+
             # Record attempt history
             attempts_history.append({
                 "attempt_number": attempt_num,
