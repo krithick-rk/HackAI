@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
+  import FolderTreeNode from './FolderTreeNode.svelte';
 
   // Types
+  interface FolderNode {
+    name: string;
+    path: string;
+    children: FolderNode[];
+    isSuggestedExclusion: boolean;
+  }
   interface ProjectConfig {
     project_name: string;
     design_dir: string;
@@ -73,6 +80,98 @@
   let showLaunchModal: boolean = false;
   let selectedModuleForDetail: ModuleStatus | null = null;
 
+  let folderTree: FolderNode[] = [];
+  let expandedNodes: Set<string> = new Set();
+
+  function buildFolderTree(folders: string[], suggestedExclusions: string[]): FolderNode[] {
+    const rootNodes: FolderNode[] = [];
+    const nodeMap: Record<string, FolderNode> = {};
+    const sortedFolders = [...folders].sort((a, b) => a.localeCompare(b));
+
+    for (const f of sortedFolders) {
+      if (f === "") continue;
+      const parts = f.split('/');
+      let currentPath = "";
+      
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        const parentPath = currentPath;
+        currentPath = currentPath ? `${currentPath}/${part}` : part;
+        
+        if (!nodeMap[currentPath]) {
+          const node: FolderNode = {
+            name: part,
+            path: currentPath,
+            children: [],
+            isSuggestedExclusion: suggestedExclusions.includes(currentPath)
+          };
+          nodeMap[currentPath] = node;
+          
+          if (i === 0) {
+            rootNodes.push(node);
+          } else {
+            const parentNode = nodeMap[parentPath];
+            if (parentNode) {
+              parentNode.children.push(node);
+            }
+          }
+        }
+      }
+    }
+    return rootNodes;
+  }
+
+  function autoExpandTree() {
+    const newExpanded = new Set<string>();
+    
+    const analyzeNode = (node: FolderNode): { hasSelected: boolean; hasExcluded: boolean } => {
+      let isSelected = !excludedFolders.has(node.path);
+      let hasSelected = isSelected;
+      let hasExcluded = !isSelected;
+      
+      for (const child of node.children) {
+        const res = analyzeNode(child);
+        if (res.hasSelected) hasSelected = true;
+        if (res.hasExcluded) hasExcluded = true;
+      }
+      
+      const isRoot = !node.path.includes('/');
+      if ((hasSelected && hasExcluded) || isRoot) {
+        newExpanded.add(node.path);
+      }
+      
+      return { hasSelected, hasExcluded };
+    };
+    
+    folderTree.forEach(node => analyzeNode(node));
+    expandedNodes = newExpanded;
+  }
+
+  function handleTreeCheckToggle(event: CustomEvent<{ node: FolderNode; checked: boolean }>) {
+    const { node, checked } = event.detail;
+    
+    const walk = (n: FolderNode) => {
+      if (checked) {
+        excludedFolders.delete(n.path);
+      } else {
+        excludedFolders.add(n.path);
+      }
+      n.children.forEach(walk);
+    };
+    walk(node);
+    excludedFolders = excludedFolders; // trigger reactivity
+  }
+
+  function handleTreeExpandToggle(event: CustomEvent<{ path: string }>) {
+    const { path } = event.detail;
+    if (expandedNodes.has(path)) {
+      expandedNodes.delete(path);
+    } else {
+      expandedNodes.add(path);
+    }
+    expandedNodes = expandedNodes; // trigger reactivity
+  }
+
   // Helper to call backend APIs
   async function apiCall(endpoint: string, payload?: any) {
     try {
@@ -112,6 +211,8 @@
           resolvedDuplicates[d.module] = d.paths[0];
         });
       }
+      folderTree = buildFolderTree(preScanData.folders, preScanData.suggested_exclusions);
+      autoExpandTree();
       step = 'config';
     } catch (e) {
       configError = 'Failed to scan directory. Make sure backend is running.';
@@ -297,25 +398,28 @@
       <div class="config-grid">
         <!-- Exclusion Panel -->
         <section class="card glass scrollable">
-          <h2>Directory Selection</h2>
-          <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs.</p>
+          <div class="panel-header-row">
+            <h2>Directory Selection</h2>
+            <button 
+              type="button"
+              class="btn btn-secondary btn-sm" 
+              on:click={autoExpandTree} 
+              title="Collapse all folders that do not have any selected sub-folders"
+            >
+              Collapse Unselected
+            </button>
+          </div>
+          <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs. Unselected folders will be collapsed into parent folders when you click "Collapse Unselected".</p>
           
           <div class="tree-list">
-            {#each preScanData.folders as folder}
-              {@const isSuggestedExclusion = preScanData.suggested_exclusions.includes(folder)}
-              <div class="tree-item {isSuggestedExclusion ? 'exclusion-suggested' : ''}">
-                <label class="checkbox-label">
-                  <input 
-                    type="checkbox" 
-                    checked={!excludedFolders.has(folder)} 
-                    on:change={() => toggleFolder(folder)} 
-                  />
-                  <span class="folder-path">{folder}</span>
-                  {#if isSuggestedExclusion}
-                    <span class="tag tag-warn">Simulation/Testbench Candidate</span>
-                  {/if}
-                </label>
-              </div>
+            {#each folderTree as rootNode}
+              <FolderTreeNode 
+                node={rootNode} 
+                {excludedFolders} 
+                {expandedNodes} 
+                on:toggleCheck={handleTreeCheckToggle}
+                on:toggleExpand={handleTreeExpandToggle}
+              />
             {/each}
           </div>
         </section>
@@ -704,6 +808,13 @@
     background: rgba(255, 61, 0, 0.15);
     border: 1px solid var(--danger-red);
     color: #ff8a80;
+  }
+
+  .panel-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
   }
 
   .config-grid {
