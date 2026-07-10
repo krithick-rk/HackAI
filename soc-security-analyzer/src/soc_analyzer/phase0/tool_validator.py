@@ -41,24 +41,54 @@ MISSING_INCLUDE_PATTERNS = [
     re.compile(r"cannot find include file\s*'([^']+)'", re.IGNORECASE),
     re.compile(r"could not find include file\s*'([^']+)'", re.IGNORECASE),
     re.compile(r"Cannot find include file\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"error:\s*'([^']+)'\s*:\s*No such file or directory", re.IGNORECASE),
+    re.compile(r"error:\s*'([^']+)'\s+No such file or directory", re.IGNORECASE),
+    re.compile(r"fatal error:\s*'([^']+)'\s+file not found", re.IGNORECASE),
 ]
 
-def detect_missing_include(output: str) -> str | None:
-    """Scans the tool output to check if there is a missing include file error. Returns its name if found."""
+def detect_missing_includes(output: str) -> List[str]:
+    """Scans the tool output to check if there are any missing include file errors. Returns all found names."""
+    found = []
     for pattern in MISSING_INCLUDE_PATTERNS:
-        match = pattern.search(output)
-        if match:
-            return match.group(1).strip()
-    return None
+        for match in pattern.finditer(output):
+            filename = match.group(1).strip()
+            if filename and filename not in found:
+                found.append(filename)
+    return found
 
 def find_include_file(filename: str, base_dir: str = "/home/hackdac/opentitan") -> str | None:
-    """Recursively searches for a file in the base directory, skipping VCS and DV/formal test dirs."""
-    skip_dirs = {".git", "dv", "pre_dv", "formal"}
-    for root, dirs, files in os.walk(base_dir):
-        # Prune search in place
-        dirs[:] = [d for d in dirs if d not in skip_dirs]
-        if filename in files:
-            return os.path.join(root, filename)
+    """Recursively searches for a file, prioritizing base_dir, then workspace, then home (excluding hidden folders)."""
+    skip_dirs = {".git", ".github", "obj_dir", "build", "workspace", "node_modules"}
+    
+    # 1. Search in base_dir (opentitan)
+    if os.path.exists(base_dir):
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if filename in files:
+                return os.path.join(root, filename)
+                
+    # 2. Search in workspace
+    workspace_dir = "/home/hackdac/Documents/AI/hackAI"
+    if os.path.exists(workspace_dir) and os.path.abspath(workspace_dir) != os.path.abspath(base_dir):
+        for root, dirs, files in os.walk(workspace_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if filename in files:
+                return os.path.join(root, filename)
+                
+    # 3. Search in home directory, skipping hidden directories
+    home_dir = "/home/hackdac"
+    if os.path.exists(home_dir):
+        for root, dirs, files in os.walk(home_dir):
+            # Prune hidden directories and other heavy folders to remain fast
+            dirs[:] = [
+                d for d in dirs 
+                if not d.startswith(".") 
+                and d not in skip_dirs 
+                and d not in {"Downloads", "Desktop", "Pictures", "Music", "Videos", "Templates", "Public"}
+            ]
+            if filename in files:
+                return os.path.join(root, filename)
+                
     return None
 
 # Regex to detect missing module/primitive from outputs
@@ -194,9 +224,9 @@ def validate_tool_for_module(
                     final_status = "NEEDS_STUB"
                     continue
                     
-            # Check for missing include file
-            missing_include = detect_missing_include(stdout_err)
-            if exit_code != 0 and missing_include:
+            # Check for missing include files
+            missing_includes = detect_missing_includes(stdout_err)
+            if exit_code != 0 and missing_includes:
                 # Find opentitan base dir from file paths
                 opentitan_base = "/home/hackdac/opentitan"
                 for f in current_files:
@@ -206,11 +236,16 @@ def validate_tool_for_module(
                             opentitan_base = f[:idx + len("opentitan")]
                             break
                             
-                resolved_include_file = find_include_file(missing_include, opentitan_base)
-                if resolved_include_file and os.path.exists(resolved_include_file):
-                    include_dir = os.path.abspath(os.path.dirname(resolved_include_file))
-                    if include_dir not in tool_info["include_paths"]:
-                        tool_info["include_paths"].append(include_dir)
+                any_resolved = False
+                for inc in missing_includes:
+                    resolved_include_file = find_include_file(inc, opentitan_base)
+                    if resolved_include_file and os.path.exists(resolved_include_file):
+                        include_dir = os.path.abspath(os.path.dirname(resolved_include_file))
+                        if include_dir not in tool_info["include_paths"]:
+                            tool_info["include_paths"].append(include_dir)
+                            any_resolved = True
+                
+                if any_resolved:
                     stub_attempt += 1
                     continue
 
