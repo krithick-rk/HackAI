@@ -145,7 +145,19 @@ def api_scan(payload: ScanPayload):
 
     # Load existing project config if it exists
     saved_config, saved_duplicates = load_project_config(payload.project_name)
-    saved_exclusions = saved_config.get("exclude_patterns", None)
+    saved_exclusions_raw = saved_config.get("exclude_patterns", None)
+    saved_exclusions = None
+    if saved_exclusions_raw is not None:
+        saved_exclusions = []
+        for f in sorted_folders:
+            f_slash = f"/{f}/"
+            is_excl = False
+            for pat in saved_exclusions_raw:
+                if pat in f_slash or pat in f:
+                    is_excl = True
+                    break
+            if is_excl:
+                saved_exclusions.append(f)
 
     return {
         "folders": sorted_folders,

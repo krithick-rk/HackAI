@@ -83,6 +83,8 @@
   let folderTree: FolderNode[] = [];
   let expandedNodes: Set<string> = new Set();
   let hideUnselected: boolean = false;
+  let initialExclusions: Set<string> = new Set();
+  let initialDuplicates: Record<string, string> = {};
 
   function toggleHideUnselected() {
     hideUnselected = !hideUnselected;
@@ -206,17 +208,21 @@
       // Pre-populate exclusions
       if (preScanData.saved_exclusions) {
         excludedFolders = new Set(preScanData.saved_exclusions);
+        initialExclusions = new Set(preScanData.saved_exclusions);
       } else {
         excludedFolders = new Set(preScanData.suggested_exclusions);
+        initialExclusions = new Set(preScanData.suggested_exclusions);
       }
       // Pre-populate duplicate choices
       if (preScanData.saved_duplicates) {
         resolvedDuplicates = { ...preScanData.saved_duplicates };
+        initialDuplicates = { ...preScanData.saved_duplicates };
       } else {
         resolvedDuplicates = {};
         preScanData.duplicates.forEach(d => {
           resolvedDuplicates[d.module] = d.paths[0];
         });
+        initialDuplicates = { ...resolvedDuplicates };
       }
       folderTree = buildFolderTree(preScanData.folders, preScanData.suggested_exclusions);
       autoExpandTree();
@@ -233,6 +239,101 @@
       excludedFolders.add(folder);
     }
     excludedFolders = excludedFolders; // Trigger svelte reactivity
+  }
+
+  let saveConfigStatus: string = '';
+  async function handleSaveConfigOnly() {
+    saveConfigStatus = 'Saving...';
+    try {
+      const configPayload: ProjectConfig = {
+        project_name: projectName,
+        design_dir: designDir,
+        output_dir: `workspace/${projectName}_artifacts`,
+        exclude_patterns: Array.from(excludedFolders),
+        active_modules: []
+      };
+      
+      await apiCall('/api/config/save', {
+        config: configPayload,
+        resolved_duplicates: resolvedDuplicates
+      });
+      saveConfigStatus = 'Saved successfully!';
+      setTimeout(() => {
+        saveConfigStatus = '';
+      }, 3000);
+    } catch (e) {
+      saveConfigStatus = 'Failed to save configuration';
+      setTimeout(() => {
+        saveConfigStatus = '';
+      }, 4000);
+    }
+  }
+
+  function handleRestoreConfig() {
+    excludedFolders = new Set(initialExclusions);
+    resolvedDuplicates = { ...initialDuplicates };
+    autoExpandTree();
+  }
+
+  let fileInput: HTMLInputElement;
+
+  function triggerFilePicker() {
+    if (fileInput) {
+      fileInput.click();
+    }
+  }
+
+  function handleFileLoad(event: Event) {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const parsed = JSON.parse(e.target?.result as string);
+        let configData = parsed;
+        let resolvedDups = {};
+
+        if (parsed.config) {
+          configData = parsed.config;
+          resolvedDups = parsed.resolved_duplicates || {};
+        }
+
+        const excludePatterns = configData.exclude_patterns || [];
+        const newExclusions = new Set<string>();
+
+        preScanData.folders.forEach(f => {
+          const fSlash = `/${f}/`;
+          let isExcl = false;
+          for (const pat of excludePatterns) {
+            if (pat === f || fSlash.includes(pat) || f.includes(pat)) {
+              isExcl = true;
+              break;
+            }
+          }
+          if (isExcl) {
+            newExclusions.add(f);
+          }
+        });
+
+        excludedFolders = newExclusions;
+        resolvedDuplicates = resolvedDups;
+        autoExpandTree();
+
+        saveConfigStatus = 'Configuration loaded!';
+        setTimeout(() => {
+          saveConfigStatus = '';
+        }, 3000);
+      } catch (err) {
+        saveConfigStatus = 'Invalid JSON config file';
+        setTimeout(() => {
+          saveConfigStatus = '';
+        }, 4000);
+      }
+    };
+    reader.readAsText(file);
+    target.value = '';
   }
 
   async function handleStartRun() {
@@ -463,8 +564,21 @@
           {/if}
 
           <div class="action-footer">
+            <input 
+              type="file" 
+              accept=".json" 
+              style="display: none" 
+              bind:this={fileInput} 
+              on:change={handleFileLoad} 
+            />
             <button class="btn btn-secondary" on:click={() => step = 'setup'}>Back</button>
+            <button class="btn btn-secondary" on:click={triggerFilePicker}>Load Config File</button>
+            <button class="btn btn-secondary" on:click={handleRestoreConfig}>Restore Saved</button>
+            <button class="btn btn-info" on:click={handleSaveConfigOnly}>Save Config</button>
             <button class="btn btn-primary" on:click={handleStartRun}>Launch Pipeline</button>
+            {#if saveConfigStatus}
+              <span class="status-msg">{saveConfigStatus}</span>
+            {/if}
           </div>
         </section>
       </div>
@@ -805,6 +919,24 @@
     background: rgba(255, 255, 255, 0.15);
   }
 
+  .btn-info {
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+    color: #fff;
+    opacity: 0.85;
+  }
+
+  .btn-info:hover {
+    opacity: 1.0;
+  }
+
+  .status-msg {
+    margin-left: 1rem;
+    align-self: center;
+    font-size: 0.9rem;
+    color: #10b981;
+    font-weight: 500;
+  }
+
   .alert {
     padding: 0.75rem;
     border-radius: 6px;
@@ -911,6 +1043,7 @@
   .action-footer {
     display: flex;
     justify-content: flex-end;
+    align-items: center;
     gap: 1rem;
     margin-top: 1.5rem;
   }
