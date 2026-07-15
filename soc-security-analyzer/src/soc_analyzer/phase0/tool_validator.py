@@ -56,6 +56,22 @@ def detect_missing_includes(output: str) -> List[str]:
                 found.append(filename)
     return found
 
+def resolve_project_base(files: List[str]) -> str:
+    for f in files:
+        if f and os.path.exists(f):
+            curr_dir = os.path.dirname(os.path.abspath(f))
+            while curr_dir and curr_dir != "/":
+                if os.path.exists(os.path.join(curr_dir, ".git")):
+                    return curr_dir
+                curr_dir = os.path.dirname(curr_dir)
+    valid_paths = [os.path.abspath(f) for f in files if os.path.exists(f)]
+    if valid_paths:
+        try:
+            return os.path.commonpath(valid_paths)
+        except Exception:
+            pass
+    return "/home/hackdac/opentitan" # Fallback
+
 def find_include_file(filename: str, base_dir: str = "/home/hackdac/opentitan") -> str | None:
     """Recursively searches for a file, prioritizing base_dir, then workspace, then home (excluding hidden folders)."""
     skip_dirs = {".git", ".github", "obj_dir", "build", "workspace", "node_modules"}
@@ -75,21 +91,42 @@ def find_include_file(filename: str, base_dir: str = "/home/hackdac/opentitan") 
             if filename in files:
                 return os.path.join(root, filename)
                 
-    # 3. Search in home directory, skipping hidden directories
-    home_dir = "/home/hackdac"
-    if os.path.exists(home_dir):
-        for root, dirs, files in os.walk(home_dir):
-            # Prune hidden directories and other heavy folders to remain fast
-            dirs[:] = [
-                d for d in dirs 
-                if not d.startswith(".") 
-                and d not in skip_dirs 
-                and d not in {"Downloads", "Desktop", "Pictures", "Music", "Videos", "Templates", "Public"}
-            ]
-            if filename in files:
-                return os.path.join(root, filename)
-                
     return None
+
+def find_all_include_files(filename: str, base_dir: str) -> List[str]:
+    """Recursively searches for all matching files by name, prioritizing base_dir, then workspace, then home."""
+    skip_dirs = {".git", ".github", "obj_dir", "build", "workspace", "node_modules"}
+    found_paths = []
+    
+    # 1. Search in base_dir
+    if os.path.exists(base_dir):
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if filename in files:
+                found_paths.append(os.path.join(root, filename))
+                
+    # 2. Search in workspace
+    workspace_dir = "/home/hackdac/Documents/AI/hackAI"
+    if os.path.exists(workspace_dir) and os.path.abspath(workspace_dir) != os.path.abspath(base_dir):
+        for root, dirs, files in os.walk(workspace_dir):
+            dirs[:] = [d for d in dirs if d not in skip_dirs]
+            if filename in files:
+                found_paths.append(os.path.join(root, filename))
+                
+    return list(set(found_paths))
+
+def sort_candidates_by_score(candidates: List[str], module_name: str) -> List[str]:
+    """Sorts candidate file paths using prefix matching score against the module name."""
+    def get_score(p: str) -> int:
+        if "earlgrey" in module_name.lower() and "earlgrey" in p.lower():
+            return 100
+        if "darjeeling" in module_name.lower() and "darjeeling" in p.lower():
+            return 100
+        module_parts = set(re.split(r"[-_]", module_name.lower()))
+        path_parts = set(re.split(r"[\\/_-]", p.lower()))
+        return len(module_parts.intersection(path_parts))
+        
+    return sorted(candidates, key=get_score, reverse=True)
 
 # Regex to detect missing module/primitive from outputs
 MISSING_MODULE_PATTERNS = [
@@ -172,19 +209,6 @@ def find_all_package_files(filename: str, base_dir: str = "/home/hackdac/opentit
     if os.path.exists(workspace_dir) and os.path.abspath(workspace_dir) != os.path.abspath(base_dir):
         for root, dirs, files in os.walk(workspace_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
-            if filename in files:
-                found_paths.append(os.path.join(root, filename))
-                
-    # 3. Walk home, excluding hidden directories
-    home_dir = "/home/hackdac"
-    if os.path.exists(home_dir):
-        for root, dirs, files in os.walk(home_dir):
-            dirs[:] = [
-                d for d in dirs 
-                if not d.startswith(".") 
-                and d not in skip_dirs 
-                and d not in {"Downloads", "Desktop", "Pictures", "Music", "Videos", "Templates", "Public"}
-            ]
             if filename in files:
                 found_paths.append(os.path.join(root, filename))
                 
@@ -318,9 +342,20 @@ def resolve_fpv_binds(module_name: str, current_files: List[str]) -> List[str]:
                 bind_file = os.path.join(tb_dir, f)
                 break
                 
+    # Find project root dynamically by traversing up until we hit a git repo or the root directory
+    proj_root = None
+    curr_dir = os.path.abspath(assert_dir)
+    while curr_dir and curr_dir != "/":
+        if os.path.exists(os.path.join(curr_dir, ".git")):
+            proj_root = curr_dir
+            break
+        curr_dir = os.path.dirname(curr_dir)
+    if not proj_root:
+        proj_root = "/home/hackdac/opentitan" # Fallback
+
     if not bind_file or not os.path.exists(bind_file):
         import glob
-        matches = glob.glob(f"/home/hackdac/opentitan/hw/**/{module_name.replace('_assert_fpv', '')}_bind_fpv.sv", recursive=True)
+        matches = glob.glob(f"{proj_root}/**/{module_name.replace('_assert_fpv', '')}_bind_fpv.sv", recursive=True)
         if matches:
             bind_file = matches[0]
             
@@ -344,7 +379,7 @@ def resolve_fpv_binds(module_name: str, current_files: List[str]) -> List[str]:
                             break
                 if not design_file:
                     import glob
-                    matches = glob.glob(f"/home/hackdac/opentitan/hw/**/{design_mod}.sv", recursive=True)
+                    matches = glob.glob(f"{proj_root}/**/{design_mod}.sv", recursive=True)
                     if matches:
                         design_file = matches[0]
                         
@@ -513,6 +548,11 @@ def validate_tool_for_module(
     stub_params = {}
     stub_hierarchies = {}
     
+    tried_packages = {}
+    package_candidates = {}
+    tried_includes = {}
+    include_candidates = {}
+    
     for attempt_idx, flags in enumerate(flags_list):
         attempt_num = attempt_idx + 1
         
@@ -545,24 +585,27 @@ def validate_tool_for_module(
             # Check for missing package
             missing_package = detect_missing_package(stdout_err)
             if exit_code != 0 and missing_package:
-                package_filenames = [f"{missing_package}.sv", f"{missing_package}.svh", f"{missing_package}.v"]
-                opentitan_base = "/home/hackdac/opentitan"
-                for f in current_files:
-                    if "opentitan" in f:
-                        idx = f.find("opentitan")
-                        if idx != -1:
-                            opentitan_base = f[:idx + len("opentitan")]
-                            break
-                            
-                found_paths = []
-                for p_fn in package_filenames:
-                    found_paths.extend(find_all_package_files(p_fn, opentitan_base))
+                if missing_package not in package_candidates:
+                    package_filenames = [f"{missing_package}.sv", f"{missing_package}.svh", f"{missing_package}.v"]
+                    project_base = resolve_project_base(current_files)
+                    found_paths = []
+                    for p_fn in package_filenames:
+                        found_paths.extend(find_all_package_files(p_fn, project_base))
+                    package_candidates[missing_package] = sort_candidates_by_score(found_paths, module_name)
+                    tried_packages[missing_package] = []
                     
-                best_file = choose_best_package_file(found_paths, module_name)
-                if best_file and os.path.exists(best_file):
-                    if best_file not in current_files:
-                        current_files.insert(0, best_file)
-                    best_dir = os.path.abspath(os.path.dirname(best_file))
+                # Remove previously tried candidate from current_files if any
+                if tried_packages[missing_package]:
+                    prev_file = tried_packages[missing_package][-1]
+                    if prev_file in current_files:
+                        current_files.remove(prev_file)
+                        
+                untried = [c for c in package_candidates[missing_package] if c not in tried_packages[missing_package]]
+                if untried:
+                    next_file = untried[0]
+                    tried_packages[missing_package].append(next_file)
+                    current_files.insert(0, next_file)
+                    best_dir = os.path.abspath(os.path.dirname(next_file))
                     if best_dir not in tool_info["include_paths"]:
                         tool_info["include_paths"].append(best_dir)
                     stub_attempt += 1
@@ -648,23 +691,29 @@ def validate_tool_for_module(
             # Check for missing include files
             missing_includes = detect_missing_includes(stdout_err)
             if exit_code != 0 and missing_includes:
-                # Find opentitan base dir from file paths
-                opentitan_base = "/home/hackdac/opentitan"
-                for f in current_files:
-                    if "opentitan" in f:
-                        idx = f.find("opentitan")
-                        if idx != -1:
-                            opentitan_base = f[:idx + len("opentitan")]
-                            break
-                            
+                project_base = resolve_project_base(current_files)
                 any_resolved = False
                 for inc in missing_includes:
-                    resolved_include_file = find_include_file(inc, opentitan_base)
-                    if resolved_include_file and os.path.exists(resolved_include_file):
-                        include_dir = os.path.abspath(os.path.dirname(resolved_include_file))
+                    if inc not in include_candidates:
+                        found_paths = find_all_include_files(inc, project_base)
+                        include_candidates[inc] = sort_candidates_by_score(found_paths, module_name)
+                        tried_includes[inc] = []
+                        
+                    # Remove previously tried include path from include_paths if any
+                    if tried_includes[inc]:
+                        prev_file = tried_includes[inc][-1]
+                        prev_dir = os.path.abspath(os.path.dirname(prev_file))
+                        if prev_dir in tool_info["include_paths"]:
+                            tool_info["include_paths"].remove(prev_dir)
+                            
+                    untried = [c for c in include_candidates[inc] if c not in tried_includes[inc]]
+                    if untried:
+                        next_file = untried[0]
+                        tried_includes[inc].append(next_file)
+                        include_dir = os.path.abspath(os.path.dirname(next_file))
                         if include_dir not in tool_info["include_paths"]:
                             tool_info["include_paths"].append(include_dir)
-                            any_resolved = True
+                        any_resolved = True
                 
                 if any_resolved:
                     stub_attempt += 1

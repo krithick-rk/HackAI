@@ -67,7 +67,7 @@ PYTHONPATH=. ~/.HACK_AI/bin/python3 -m src.soc_analyzer.dashboard.server
 ### 3. Run Pipeline CLI Verification
 To trigger validations directly via the CLI:
 ```bash
-python3 verify_pipeline.py --design-dir /home/hackdac/opentitan --project-name opentitan
+python3 verify_pipeline.py --design-dir /home/hackdac/opentitan --output-dir workspace/opentitan_artifacts
 ```
 
 ### 4. Run Unit Tests
