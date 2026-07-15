@@ -10,7 +10,7 @@ def main():
     parser.add_argument("-d", "--design-dir", type=str, help="Path to the directory containing RTL designs to scan recursively")
     parser.add_argument("-o", "--output-dir", type=str, help="Output directory for generated Phase 0 artifacts")
     parser.add_argument("-i", "--include-dirs", nargs="*", help="Optional additional include directories")
-    parser.add_argument("-x", "--exclude", nargs="*", default=["/dv/", "/pre_dv/", "/formal/"],
+    parser.add_argument("-x", "--exclude", nargs="*", default=["/dv/", "/pre_dv/", "/formal/", "/google_riscv-dv/", "/test/", "/tb/", "/vip/"],
                         help="Path patterns to exclude from recursive scanning (default: simulation/formal paths)")
     
     args = parser.parse_args()
