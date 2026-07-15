@@ -131,6 +131,30 @@ def detect_missing_package(output: str) -> str | None:
             return match.group(1).strip()
     return None
 
+# Regex to detect missing defines or macro definitions
+MISSING_DEFINE_PATTERNS = [
+    re.compile(r"(\w+)\s+needs to be defined globally", re.IGNORECASE),
+    re.compile(r"(\w+)\s+must be defined", re.IGNORECASE),
+    re.compile(r"Define or directive not defined:\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"Directive not defined:\s*'([^']+)'", re.IGNORECASE),
+    re.compile(r"undefined macro\s+'([^']+)'", re.IGNORECASE),
+    re.compile(r"macro\s+'([^']+)'\s+is not defined", re.IGNORECASE),
+]
+
+def detect_missing_defines(output: str) -> List[str]:
+    """Scans the tool output to identify missing macro definitions / defines."""
+    defines = []
+    for pattern in MISSING_DEFINE_PATTERNS:
+        for match in pattern.finditer(output):
+            val = match.group(1).strip()
+            if val and val not in defines:
+                defines.append(val)
+    # Special context fallback for rvfi pin mismatches if RVFI wasn't caught
+    if "rvfi_valid" in output or "rvfi_order" in output:
+        if "RVFI" not in defines:
+            defines.append("RVFI")
+    return defines
+
 def find_all_package_files(filename: str, base_dir: str = "/home/hackdac/opentitan") -> List[str]:
     """Recursively searches for all files matching filename in base_dir, workspace, and home."""
     found_paths = []
@@ -306,10 +330,11 @@ def validate_tool_for_module(
         # Stub resolution loop: if command fails due to missing module or missing include, resolve and retry immediately
         stub_retry_limit = 10
         stub_attempt = 0
+        current_flags = list(flags)
         
         while stub_attempt < stub_retry_limit:
             current_files = sort_files_by_dependency(current_files)
-            cmd = build_command_args(tool_name, binary_name, flags, tool_info["include_paths"], current_files)
+            cmd = build_command_args(tool_name, binary_name, current_flags, tool_info["include_paths"], current_files)
             
             try:
                 # Run subprocess
@@ -456,11 +481,24 @@ def validate_tool_for_module(
                     stub_attempt += 1
                     continue
 
+            # Check for missing defines/macros
+            missing_defines = detect_missing_defines(stdout_err)
+            if exit_code != 0 and missing_defines:
+                any_new_define = False
+                for df in missing_defines:
+                    define_flag = f"-D{df}"
+                    if define_flag not in current_flags:
+                        current_flags.append(define_flag)
+                        any_new_define = True
+                if any_new_define:
+                    stub_attempt += 1
+                    continue
+
             # Record attempt history
             attempts_history.append({
                 "attempt_number": attempt_num,
                 "command": " ".join(cmd),
-                "flags": flags,
+                "flags": current_flags,
                 "exit_code": exit_code,
                 "raw_output": stdout_err
             })
