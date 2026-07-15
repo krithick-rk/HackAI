@@ -18,9 +18,9 @@ BIN_MAP = {
 # Retry flag combinations for each tool
 RETRY_FLAGS = {
     "slang": [
-        ["--single-unit", "--relax-enum-conversions"],                                                 # Attempt 1: Base with single unit
-        ["--single-unit", "--relax-enum-conversions", "--error-limit", "0"],                             # Attempt 2: Ignore error limits
-        ["--single-unit", "--relax-enum-conversions", "--error-limit", "0", "--allow-use-before-declare"] # Attempt 3: Even more permissive
+        ["--single-unit", "--relax-enum-conversions", "--timescale=1ns/1ps"],                                                 # Attempt 1: Base with single unit & timescale
+        ["--single-unit", "--relax-enum-conversions", "--timescale=1ns/1ps", "--error-limit", "0"],                             # Attempt 2: Ignore error limits
+        ["--single-unit", "--relax-enum-conversions", "--timescale=1ns/1ps", "--error-limit", "0", "--allow-use-before-declare"] # Attempt 3: Even more permissive
     ],
     "verilator": [
         ["--lint-only", "-Wall", "-Wno-ENUMVALUE"],                                          # Attempt 1: Base Wall
