@@ -192,12 +192,27 @@ def scan_dependencies(file_paths: List[str], include_dirs: List[str]) -> Tuple[D
                             "description": f"Module '{mod_name}' is defined in both '{path}' and '{previous_path}'"
                         })
                         
-                known_modules[mod_name] = path
-                modules_data[mod_name] = {
-                    "defined_in": path,
-                    "instantiates": [],
-                    "instantiated_by": []
-                }
+                # Prioritize generic primitive implementations
+                def get_path_score(p: str) -> int:
+                    score = 0
+                    if "prim_generic" in p:
+                        score += 10
+                    elif "hw/ip/prim/" in p:
+                        score += 5
+                    if "vendor/" in p or "lowrisc_ibex" in p:
+                        score -= 10
+                    if "prim_asap7" in p or "prim_xilinx" in p:
+                        score -= 5
+                    return score
+
+                if mod_name not in known_modules or get_path_score(path) > get_path_score(known_modules[mod_name]):
+                    known_modules[mod_name] = path
+                    modules_data[mod_name] = {
+                        "defined_in": path,
+                        "instantiates": [],
+                        "instantiated_by": []
+                    }
+
 
                 
             # Package definitions
