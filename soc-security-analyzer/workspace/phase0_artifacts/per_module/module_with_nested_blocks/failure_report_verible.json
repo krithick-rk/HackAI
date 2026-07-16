@@ -4,23 +4,23 @@
   "attempts": [
     {
       "attempt_number": 1,
-      "command": "verible-verilog-lint /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
+      "command": "verible-verilog-lint /home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
       "flags": [],
       "exit_code": 1,
-      "raw_output": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:68: syntax error at token \"*\"\n"
+      "raw_output": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:68: syntax error at token \"*\"\n/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv:124:101-103: Line length exceeds max: 100; is: 103 [Style: line-length] [line-length]\n/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv:129:101-108: Line length exceeds max: 100; is: 108 [Style: line-length] [line-length]\n/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv:169:101-114: Line length exceeds max: 100; is: 114 [Style: line-length] [line-length]\n"
     },
     {
       "attempt_number": 2,
-      "command": "verible-verilog-lint --nolint_fatal /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
+      "command": "verible-verilog-lint --nolint_fatal /home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
       "flags": [
         "--nolint_fatal"
       ],
       "exit_code": 1,
-      "raw_output": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:68: syntax error at token \"*\"\n"
+      "raw_output": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:68: syntax error at token \"*\"\n/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv:124:101-103: Line length exceeds max: 100; is: 103 [Style: line-length] [line-length]\n/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv:129:101-108: Line length exceeds max: 100; is: 108 [Style: line-length] [line-length]\n/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv:169:101-114: Line length exceeds max: 100; is: 114 [Style: line-length] [line-length]\n"
     },
     {
       "attempt_number": 3,
-      "command": "verible-verilog-lint --nolint_fatal --rules=-line-length /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
+      "command": "verible-verilog-lint --nolint_fatal --rules=-line-length /home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
       "flags": [
         "--nolint_fatal",
         "--rules=-line-length"

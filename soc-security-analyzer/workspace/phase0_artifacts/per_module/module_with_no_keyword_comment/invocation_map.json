@@ -3,6 +3,7 @@
   "slang": {
     "base_command": "slang --lint-only",
     "files": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv",
       "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv"
     ],
     "include_paths": [],
@@ -15,9 +16,12 @@
   "verilator": {
     "base_command": "verilator --lint-only -Wall",
     "files": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv",
       "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv"
     ],
-    "include_paths": [],
+    "include_paths": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl"
+    ],
     "required_companions": [],
     "stubs_required": [],
     "status": "VALIDATED",
@@ -27,13 +31,14 @@
   "verible": {
     "base_command": "verible-verilog-lint",
     "files": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv",
       "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv"
     ],
     "include_paths": [],
     "required_companions": [],
     "stubs_required": [],
     "status": "PARTIAL",
-    "validation_output_summary": "1 warning(s) detected",
+    "validation_output_summary": "Validated with 1 warning(s)",
     "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
   }
 }

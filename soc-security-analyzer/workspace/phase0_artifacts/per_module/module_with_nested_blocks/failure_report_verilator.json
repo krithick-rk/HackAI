@@ -4,33 +4,36 @@
   "attempts": [
     {
       "attempt_number": 1,
-      "command": "verilator --lint-only -Wall /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
+      "command": "verilator --lint-only -Wall -Wno-ENUMVALUE -I/home/hackdac/opentitan/hw/ip/prim/rtl /home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
       "flags": [
         "--lint-only",
-        "-Wall"
+        "-Wall",
+        "-Wno-ENUMVALUE"
       ],
       "exit_code": 1,
       "raw_output": "%Error: /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:26: syntax error, unexpected '*'\n    4 |       assign out = 1'b0; */\n      |                          ^\n        ... See the manual at https://verilator.org/verilator_doc.html?v=5.048 for more assistance.\n%Error: Cannot continue\n        ... This fatal error may be caused by the earlier error(s); resolve those first.\n"
     },
     {
       "attempt_number": 2,
-      "command": "verilator --lint-only -Wall -Wno-fatal /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
+      "command": "verilator --lint-only -Wall -Wno-fatal -Wno-ENUMVALUE -I/home/hackdac/opentitan/hw/ip/prim/rtl /home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
       "flags": [
         "--lint-only",
         "-Wall",
-        "-Wno-fatal"
+        "-Wno-fatal",
+        "-Wno-ENUMVALUE"
       ],
       "exit_code": 1,
       "raw_output": "%Error: /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:26: syntax error, unexpected '*'\n    4 |       assign out = 1'b0; */\n      |                          ^\n        ... See the manual at https://verilator.org/verilator_doc.html?v=5.048 for more assistance.\n%Error: Cannot continue\n        ... This fatal error may be caused by the earlier error(s); resolve those first.\n"
     },
     {
       "attempt_number": 3,
-      "command": "verilator --lint-only -Wno-fatal -Wno-lint -Wno-style /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
+      "command": "verilator --lint-only -Wno-fatal -Wno-lint -Wno-style -Wno-ENUMVALUE -I/home/hackdac/opentitan/hw/ip/prim/rtl /home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv",
       "flags": [
         "--lint-only",
         "-Wno-fatal",
         "-Wno-lint",
-        "-Wno-style"
+        "-Wno-style",
+        "-Wno-ENUMVALUE"
       ],
       "exit_code": 1,
       "raw_output": "%Error: /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_nested_blocks.sv:4:26: syntax error, unexpected '*'\n    4 |       assign out = 1'b0; */\n      |                          ^\n        ... See the manual at https://verilator.org/verilator_doc.html?v=5.048 for more assistance.\n%Error: Cannot continue\n        ... This fatal error may be caused by the earlier error(s); resolve those first.\n"

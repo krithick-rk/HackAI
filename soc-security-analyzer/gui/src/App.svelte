@@ -93,6 +93,16 @@
   let contextSubTab: 'hierarchy' | 'secrets' | 'trust' = 'hierarchy';
   let flatHierarchy: Array<{ name: string; instName: string; level: number }> = [];
 
+  let selectedConsoleLogTab: 'validation' | 'repair' = 'validation';
+  $: if (runStatus && runStatus.current_stream_type) {
+    if (runStatus.running) {
+      selectedConsoleLogTab = runStatus.current_stream_type;
+    }
+  }
+  $: logsToDisplay = (selectedConsoleLogTab === 'repair') 
+    ? (runStatus.repair_logs || []) 
+    : (runStatus.validation_logs || runStatus.logs || []);
+
   function computeFlatHierarchy(hierarchyObj: any) {
     const result: Array<{ name: string; instName: string; level: number }> = [];
     
@@ -875,13 +885,32 @@
 
                 <!-- Right Side: Live Logs -->
                 <section class="card glass console-card">
-                  <h2>Console Execution Stream</h2>
+                  <div class="console-header-row">
+                    <h2 style="margin: 0;">Console Execution Stream</h2>
+                    <div class="console-tabs">
+                      <button 
+                        class="console-tab-btn {selectedConsoleLogTab === 'validation' ? 'active' : ''}" 
+                        on:click={() => selectedConsoleLogTab = 'validation'}
+                      >
+                        Validation Stream
+                      </button>
+                      <button 
+                        class="console-tab-btn {selectedConsoleLogTab === 'repair' ? 'active' : ''}" 
+                        on:click={() => selectedConsoleLogTab = 'repair'}
+                      >
+                        AI Repair Stream
+                      </button>
+                    </div>
+                  </div>
                   <div class="console-box" id="console" bind:this={consoleElement}>
-                    {#each runStatus.logs as log}
+                    {#each logsToDisplay as log}
                       <div class="console-line">{log}</div>
                     {/each}
+                    {#if logsToDisplay.length === 0}
+                      <div class="console-line empty-log">No logs recorded for this stream.</div>
+                    {/if}
                   </div>
-                  {#if runStatus.running}
+                  {#if runStatus.running && selectedConsoleLogTab === runStatus.current_stream_type}
                     <div class="console-input-area">
                       <input 
                         type="text" 
@@ -1608,6 +1637,48 @@
   .btn-sm {
     padding: 0.4rem 0.8rem;
     font-size: 0.8rem;
+  }
+
+  .console-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+  }
+
+  .console-tabs {
+    display: flex;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .console-tab-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 0.25rem 0.75rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+  }
+
+  .console-tab-btn:hover {
+    color: var(--text-color);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .console-tab-btn.active {
+    background: var(--primary-color);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .empty-log {
+    color: var(--text-muted);
+    font-style: italic;
   }
 
   .console-card {

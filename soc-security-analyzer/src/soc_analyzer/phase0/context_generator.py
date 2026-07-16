@@ -398,11 +398,53 @@ def generate_context(output_dir: str):
     # Aggregate into context_artifact.json
     print("Aggregating contexts into context_artifact.json...")
     
-    # Compute module hierarchy
-    hierarchy = {}
+    # Compute module hierarchy (built recursively for the UI instantiation tree)
+    instantiations_dict = {m: c.get("instantiations", []) for m, c in module_contexts.items()}
+    
+    def build_tree(mod_name, inst_name="", visited=None):
+        if visited is None:
+            visited = set()
+        if mod_name in visited:
+            return {
+                "name": mod_name,
+                "module_name": mod_name,
+                "instance_name": inst_name,
+                "children": []
+            }
+        visited.add(mod_name)
+        children = []
+        for inst in instantiations_dict.get(mod_name, []):
+            child_mod = inst["module_name"]
+            child_inst = inst["instance_name"]
+            if child_mod in instantiations_dict:
+                children.append(build_tree(child_mod, child_inst, visited.copy()))
+            else:
+                children.append({
+                    "name": child_mod,
+                    "module_name": child_mod,
+                    "instance_name": child_inst,
+                    "children": []
+                })
+        return {
+            "name": mod_name,
+            "module_name": mod_name,
+            "instance_name": inst_name,
+            "children": children
+        }
+
+    # Identify candidate root modules (those not instantiated anywhere)
+    instantiated_modules = set()
     for mod_name, context in module_contexts.items():
-        children = [inst["module_name"] for inst in context.get("instantiations", [])]
-        hierarchy[mod_name] = children
+        for inst in context.get("instantiations", []):
+            instantiated_modules.add(inst["module_name"])
+            
+    roots = [m for m in module_contexts.keys() if m not in instantiated_modules]
+    if not roots:
+        roots = list(module_contexts.keys())
+        
+    hierarchy = {}
+    for r in roots:
+        hierarchy[r] = build_tree(r)
         
     # Build global signal flow graph representation
     signal_flow_graph = {
@@ -426,7 +468,7 @@ def generate_context(output_dir: str):
                 
     # Build trust boundaries and tag secrets
     trust_boundaries = {}
-    secret_signals = []
+    secret_signals = {}
     
     for mod_name, context in module_contexts.items():
         # 1. Define trust boundaries
@@ -438,24 +480,28 @@ def generate_context(output_dir: str):
         else:
             trust_boundaries[mod_name] = "INTERNAL_LOGIC"
             
-        # 2. Tag secret signals
+        # 2. Tag secret signals mapping to the Svelte expectations
+        mod_secrets = []
         for port in context.get("ports", []):
             pname = port["name"]
             if any(k in pname.lower() for k in SECRET_KEYWORDS):
-                secret_signals.append({
-                    "module": mod_name,
-                    "signal": pname,
+                mod_secrets.append({
+                    "name": pname,
                     "type": "port",
-                    "direction": port["direction"]
+                    "direction": port["direction"],
+                    "reason": "Keyword matched in port name"
                 })
         for assign in context.get("assignments", []):
             target = assign["target"]
             if any(k in target.lower() for k in SECRET_KEYWORDS):
-                secret_signals.append({
-                    "module": mod_name,
-                    "signal": target,
-                    "type": "internal"
+                mod_secrets.append({
+                    "name": target,
+                    "type": "internal",
+                    "direction": "internal",
+                    "reason": "Keyword matched in internal assignment"
                 })
+        if mod_secrets:
+            secret_signals[mod_name] = mod_secrets
                 
     # Build per-module compressed summaries
     module_summaries = {}

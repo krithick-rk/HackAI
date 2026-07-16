@@ -20,6 +20,9 @@ class ActiveRunState:
     def __init__(self):
         self.process: Optional[subprocess.Popen] = None
         self.logs: List[str] = []
+        self.validation_logs: List[str] = []
+        self.repair_logs: List[str] = []
+        self.current_stream_type: str = "validation"
         self.project_name: str = ""
         self.design_dir: str = ""
         self.output_dir: str = ""
@@ -45,11 +48,16 @@ def save_console_logs():
     global state
     if not state.output_dir:
         return
-    log_file = os.path.join(state.output_dir, "console_stream.json")
     try:
         os.makedirs(state.output_dir, exist_ok=True)
-        with open(log_file, "w") as f:
+        with open(os.path.join(state.output_dir, "console_stream.json"), "w") as f:
             json.dump(state.logs, f)
+        with open(os.path.join(state.output_dir, "validation_stream.json"), "w") as f:
+            json.dump(state.validation_logs, f)
+        with open(os.path.join(state.output_dir, "repair_stream.json"), "w") as f:
+            json.dump(state.repair_logs, f)
+        with open(os.path.join(state.output_dir, "stream_type.json"), "w") as f:
+            json.dump(state.current_stream_type, f)
     except Exception as e:
         print(f"Failed to save console logs: {e}")
 
@@ -57,13 +65,25 @@ def load_console_logs():
     global state
     if not state.output_dir:
         return
-    log_file = os.path.join(state.output_dir, "console_stream.json")
-    if os.path.exists(log_file):
-        try:
-            with open(log_file, "r") as f:
+    try:
+        f_active = os.path.join(state.output_dir, "console_stream.json")
+        if os.path.exists(f_active):
+            with open(f_active, "r") as f:
                 state.logs = json.load(f)
-        except Exception as e:
-            print(f"Failed to load console logs: {e}")
+        f_val = os.path.join(state.output_dir, "validation_stream.json")
+        if os.path.exists(f_val):
+            with open(f_val, "r") as f:
+                state.validation_logs = json.load(f)
+        f_rep = os.path.join(state.output_dir, "repair_stream.json")
+        if os.path.exists(f_rep):
+            with open(f_rep, "r") as f:
+                state.repair_logs = json.load(f)
+        f_type = os.path.join(state.output_dir, "stream_type.json")
+        if os.path.exists(f_type):
+            with open(f_type, "r") as f:
+                state.current_stream_type = json.load(f)
+    except Exception as e:
+        print(f"Failed to load console logs: {e}")
 
 def read_process_output(proc: subprocess.Popen):
     global state
@@ -223,11 +243,14 @@ def api_run(payload: RunPayload):
 
     # Clear old run logs
     state.logs = ["Launching SoC Security Pipeline..."]
+    state.validation_logs = state.logs
+    state.current_stream_type = "validation"
     save_console_logs()
 
     # Build command line
     cmd = [
         sys.executable,
+        "-u",
         "verify_pipeline.py",
         "-d", state.design_dir,
         "-o", state.output_dir
@@ -302,15 +325,15 @@ def api_status():
                             statuses = [sdata.get(t) for t in ["slang", "verilator", "verible"] if t in sdata]
                             if not statuses:
                                 status = "UNVALIDATED"
-                            elif all(s == "VALIDATED" for s in statuses):
-                                status = "VALIDATED"
-                                validated += 1
                             elif any(s in ("FAILED", "TOOL_UNAVAILABLE") for s in statuses):
                                 status = "FAILED"
                                 failed += 1
-                            else:
+                            elif any(s == "NEEDS_STUB" for s in statuses):
                                 status = "PARTIAL"
                                 partial += 1
+                            else:
+                                status = "VALIDATED"
+                                validated += 1
 
                             defined_in = sdata.get("defined_in", "")
                             if not defined_in:
@@ -371,6 +394,9 @@ def api_status():
         "partially_validated": partial,
         "failed": failed,
         "logs": state.logs,
+        "validation_logs": state.validation_logs,
+        "repair_logs": state.repair_logs,
+        "current_stream_type": state.current_stream_type,
         "modules": modules_list
     }
 
@@ -395,11 +421,14 @@ def api_repair():
 
     # Clear old run logs
     state.logs = ["Launching Throwaway AI Failure Repairer..."]
+    state.repair_logs = state.logs
+    state.current_stream_type = "repair"
     save_console_logs()
 
     # Build command line to run with --repair-failures
     cmd = [
         sys.executable,
+        "-u",
         "verify_pipeline.py",
         "-d", state.design_dir,
         "-o", state.output_dir,
@@ -504,7 +533,7 @@ def api_proceed():
         "failed_modules_ignored": failed_modules
     }
 
-@app.get("/api/context")
+@app.api_route("/api/context", methods=["GET", "POST"])
 def api_context():
     global state
     if not state.output_dir:
@@ -519,7 +548,10 @@ def api_context():
     if os.path.exists(context_file):
         try:
             with open(context_file, "r") as f:
-                return json.load(f)
+                full_data = json.load(f)
+            # Filter to include only keys needed by frontend UI to avoid 70MB+ payload timeout
+            ui_keys = ["module_hierarchy", "clock_domains", "trust_boundaries", "secret_signals", "module_summaries"]
+            return {k: full_data[k] for k in ui_keys if k in full_data}
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read context file: {e}")
     return {}

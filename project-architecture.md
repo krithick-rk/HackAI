@@ -36,9 +36,18 @@ operator retains full visibility and control throughout via a local GUI dashboar
 
 ```
 ┌─────────────────────────────────────────────────────────┐
+│   PYTHON — FETCH, AST BUILD & TOOL VALIDATION            │
+│   fetches SV files + includes · builds dependency graph  │
+│   generates AST cache · validates every module × tool    │
+│   produces validation_status.json — no AI involved       │
+└───────────────────────┬─────────────────────────────────┘
+                        │ only NEEDS_STUB / FAILED modules
+                        ▼
+┌─────────────────────────────────────────────────────────┐
 │             THROWAWAY AI  (Phase 0 only)                │
-│   context generation · synthesis · tool validation      │
-│             discarded when Phase 0 completes            │
+│   fixes only the NEEDS_STUB/FAILED validations · synthesis│
+│   interpretation · fuzzing candidate recommendation      │
+│             discarded when Phase 0 completes             │
 └───────────────────────┬─────────────────────────────────┘
                         │ writes artifacts to disk
                         ▼
@@ -74,10 +83,19 @@ operator retains full visibility and control throughout via a local GUI dashboar
 ```
 
 ### Throwaway AI (Phase 0)
-Single-use. Handles all whole-project upfront reasoning: dependency graph analysis, context
-generation, synthesis coordination, fuzzing candidate recommendation. Writes structured artifacts
-to disk and is discarded. Never participates in bug analysis. Everything it reasons about lives
-in files, not in its conversational memory.
+Single-use, and now **deliberately narrow-scoped**. Python does all the upfront mechanical
+legwork first — fetching every SV file and its includes, building the dependency graph,
+generating the AST, and running tool validation for every module — before the Throwaway AI is
+ever invoked. By the time the Throwaway AI starts, it is handed a finished
+`validation_status.json` list (VALIDATED / PARTIAL / NEEDS_STUB / FAILED, per module × tool)
+plus the cached AST. Its job is **not** to reason about the whole project — it only works
+through the modules that Python flagged as `NEEDS_STUB` or `FAILED`, resolving the specific
+include/ambiguity/stub problem for that module × tool combination. It still separately handles
+synthesis-log interpretation (Sub-stage 0.4) and fuzzing candidate recommendation
+(Sub-stage 0.5), but the dependency/validation work — its single biggest historical token
+cost — is now reduced to only the failures Python couldn't resolve on its own. Everything it
+touches lives in files, not in its conversational memory, and it is discarded once Phase 0
+completes.
 
 ### Python Orchestrator
 Replaces what was previously called "Master AI for distribution." All mechanical orchestration
@@ -112,7 +130,7 @@ from the GUI.
 ---
 
 ### Phase 0 — Environment Setup, Context Generation & Synthesis
-**Agent:** Throwaway AI + Python scripts
+**Agent:** Python (first, does the bulk of the work) → Throwaway AI (second, only on failures) → Python (synthesis/fuzzing support)
 **Blocking:** No. Sub-stages produce per-module artifacts. Modules that pass proceed immediately
 to worker assignment while failed modules wait for human resolution in parallel.
 
@@ -138,29 +156,34 @@ Phase 0 produces per-module artifact files (not one monolithic JSON) plus shared
 **Why per-module files instead of one monolithic map:**
 Python can read and route `per_module/uart_core/invocation_map.json` to exactly the worker
 assigned to `uart_core` without loading or passing the entire project's invocation data. Workers
-never see invocation data for modules they are not assigned to.
+never see invocation data for modules they are not assigned to. This same per-module slicing is
+what lets the Throwaway AI, later, receive only the `NEEDS_STUB`/`FAILED` modules instead of the
+full per-module tree.
 
 ---
 
-#### Sub-stage 0.1 — Dependency Graph Resolution (Python + Throwaway AI)
+#### Sub-stage 0.1 — File Fetch, Dependency Graph & AST Build (Python only, no AI)
 
-**Python first:** A Python script statically scans all files for `import`, `` `include ``,
-module instantiation references, and package declarations. It builds a raw dependency graph
-without AI involvement — this is text parsing, not reasoning.
+Python does this entire sub-stage on its own, with no AI involvement:
 
-**Throwaway AI second:** Reviews the Python-produced graph for anything that requires
-interpretation (ambiguous include paths, parameterized instantiations, conditional compilation
-blocks) and resolves them. Produces the final dependency map that feeds Sub-stage 0.2.
+1. **Fetch every SV/Verilog source file and its includes** — walks the project tree, resolves
+   `` `include `` directives and import paths, and pulls the full file set needed for each module.
+2. **Static dependency graph** — scans for `import`, `` `include ``, module instantiation
+   references, and package declarations. Builds the raw dependency graph via text parsing —
+   no reasoning required.
+3. **AST generation** — runs Slang against each module (using the fetched files/includes) and
+   caches the result to `ast_cache/<module>.json`.
 
-This split keeps AI out of mechanical text-scanning work while using it where interpretation
-is genuinely needed.
+Output: a raw dependency map, a per-module AST cache, and a preliminary file-resolution status
+(which includes/files resolved cleanly vs. which were missing) that feeds directly into
+Sub-stage 0.2.
 
 ---
 
 #### Sub-stage 0.2 — Tool Validation (Python executes, non-blocking per module)
 
-Python runs validation for every module × tool combination using the dependency map from 0.1.
-This is fully automated Python — no AI involved in running the checks.
+Python runs validation for every module × tool combination using the dependency map and AST
+from 0.1. This is fully automated Python — no AI involved in running the checks.
 
 **Validation result states:**
 
@@ -173,6 +196,11 @@ TOOL_UNAVAILABLE binary missing or version incompatible; flagged to GUI
 FAILED           error persists after 3 Python retry attempts (each with
                  a different flag combination); flagged to GUI
 ```
+
+Python writes the complete `validation_status.json` per module — the full list of what
+validated cleanly, what needed a stub, and what failed — **before the Throwaway AI is ever
+invoked.** This status list, plus the AST cache from 0.1, is the only thing that determines
+what the Throwaway AI sees next.
 
 **Non-blocking failure handling:**
 When a module × tool combination hits TOOL_UNAVAILABLE or FAILED after 3 attempts:
@@ -222,10 +250,34 @@ style choices). They are not locked to the exact command as validated.
 
 ---
 
-#### Sub-stage 0.3 — Context Generation (Throwaway AI)
+#### Sub-stage 0.3 — Targeted Fix-Up (Throwaway AI, scoped to failures only)
 
-Throwaway AI uses the Slang AST (produced during 0.2 validation runs, cached to
-`ast_cache/<module>.json`) to generate `context_artifact.json`:
+The Throwaway AI is invoked here for the first time in Phase 0 — and it is handed only the
+`NEEDS_STUB` and `FAILED` entries from `validation_status.json`, plus the AST cache and raw
+dependency map for just those modules. It does **not** receive the full project context or the
+modules that already validated cleanly.
+
+For each failing module × tool combination, the Throwaway AI:
+- Reviews the exact error output and the resolved (or unresolved) include/dependency chain for
+  that module.
+- Resolves genuinely ambiguous cases the Python pass couldn't — ambiguous include paths,
+  parameterized instantiations, conditional compilation blocks — and proposes a fix (corrected
+  path, stub definition, or command adjustment).
+- Hands the fix back to Python, which re-runs validation for that specific module × tool
+  combination and updates `validation_status.json`.
+- If still unresolved after this pass, the module × tool combination is surfaced to the human
+  in the GUI exactly as described in the non-blocking failure handling above — the Throwaway AI
+  does not loop on it indefinitely.
+
+This keeps the Throwaway AI's workload proportional to how much of the codebase actually needs
+interpretation, rather than the size of the whole project.
+
+---
+
+#### Sub-stage 0.4 — Context Generation (Throwaway AI)
+
+Throwaway AI uses the Slang AST (cached in Sub-stage 0.1, and repaired where needed in
+Sub-stage 0.3) to generate `context_artifact.json`:
 
 - Module hierarchy tree
 - Signal flow graph (across the full design)
@@ -243,7 +295,7 @@ slice to each worker. No worker loads the full context artifact.
 
 ---
 
-#### Sub-stage 0.4 — Shared Synthesis (Python runs Yosys, Throwaway AI interprets)
+#### Sub-stage 0.5 — Shared Synthesis (Python runs Yosys, Throwaway AI interprets)
 
 Python runs Yosys synthesis on the full design. Python parses the output and splits it into
 per-module netlist slices stored in `netlist/<module>.json`. Throwaway AI reviews the synthesis
@@ -253,7 +305,7 @@ per-module context slices.
 
 ---
 
-#### Sub-stage 0.5 — Fuzzing Candidate Recommendation (Throwaway AI, non-blocking)
+#### Sub-stage 0.6 — Fuzzing Candidate Recommendation (Throwaway AI, non-blocking)
 
 Throwaway AI reviews the module hierarchy, trust boundaries, and signal flow graph and produces
 `fuzzing_candidates.json` — a ranked list of modules recommended for Phase 3b coverage-guided
@@ -266,7 +318,7 @@ Throwaway AI's selections but fully editable. Human can add, remove, or reorder 
 **This is non-blocking.** The GUI presents the checklist and human can update it at any time
 before Phase 3b begins. All other phases continue without waiting.
 
-**Throwaway AI is discarded after Sub-stage 0.5.**
+**Throwaway AI is discarded after Sub-stage 0.6.**
 
 ---
 
@@ -460,7 +512,7 @@ branches and FSM states. This targets deep security bugs — privilege escalatio
 unreachable-looking backdoors — that directed simulation misses.
 
 **Module selection process (non-blocking):**
-- Throwaway AI's `fuzzing_candidates.json` recommendation (from Phase 0.5) is displayed
+- Throwaway AI's `fuzzing_candidates.json` recommendation (from Sub-stage 0.6) is displayed
   in the GUI as a pre-populated checklist with reasoning visible per module.
 - Human reviews, approves, modifies the list at any time.
 - The checklist can be updated while Phases 1, 2, and 3a are running — human is not forced
@@ -624,6 +676,8 @@ This mechanism applies identically in Phase 0, Phase 1, Phase 2, Phase 3a, and P
 The following are never done by AI — Python only:
 
 - File system operations (copy, route, read, write)
+- SV/Verilog file and include fetching, dependency graph construction, and AST generation
+  (Sub-stage 0.1)
 - Module-to-worker assignment
 - Worker state tracking (`pipeline_state.json`)
 - Retry attempt counting
@@ -728,8 +782,8 @@ FastAPI backend + lightweight HTML/JS frontend.
 
 | Stage | Tool | Who executes | Mode |
 |---|---|---|---|
-| Dependency scanning | Python (text parsing) | Python | Pre-analysis |
-| Parsing / elaboration / AST | Slang | Python runs, AI interprets | Static |
+| File fetch / dependency scanning / AST | Python (Slang + text parsing) | Python | Pre-analysis |
+| Parsing / elaboration / AST | Slang | Python runs, Throwaway AI fixes failures only | Static |
 | Style / lint | Verible | Python runs, AI interprets | Static |
 | Simulation — primary | Verilator | Python runs, worker interprets | Static (lint) + Dynamic (sim) |
 | Simulation — cross-check | iverilog | Python runs, worker interprets | Static + Dynamic |
@@ -840,40 +894,45 @@ demonstration/
 1. **Python pre-processing pipeline** — comment stripper (keyword-aware) + tool output
    compressor (raw logs → structured JSON). No dependencies on anything else. Build first.
 
-2. **Phase 0 dependency scanner + tool validation** — Python dependency graph builder +
-   per-module invocation map generator + tool health check runner. Validates real-world
-   tool environment before any AI logic is built on top of it.
+2. **Phase 0 file fetch, dependency scanner, AST builder & tool validation** — Python file/include
+   fetcher + dependency graph builder + Slang AST cache generator + per-module invocation map
+   generator + tool health check runner, producing the full `validation_status.json` per module.
+   Validates real-world tool environment before any AI logic is built on top of it.
 
 3. **CWE API wrapper** — Python utility with local caching. Pre-fetch CWE-1194 subtree
    at startup. Build early since every finding depends on it.
 
-4. **Context artifact generator** — Slang integration, module hierarchy, signal flow graph,
+4. **Throwaway AI targeted fix-up pass** — small, scoped to only the `NEEDS_STUB`/`FAILED`
+   entries from `validation_status.json`. Build once the validation status list exists so it
+   has something concrete to fix rather than the whole project.
+
+5. **Context artifact generator** — Slang integration, module hierarchy, signal flow graph,
    secret signal tagging, per-module summary generation.
 
-5. **Python orchestrator** — worker manifest generation, state tracking (`pipeline_state.json`),
+6. **Python orchestrator** — worker manifest generation, state tracking (`pipeline_state.json`),
    finding registry with continuous deduplication, GUI state updates. This is the backbone
    everything else plugs into.
 
-6. **GUI skeleton** — FastAPI + minimal frontend. Build before worker parallelization so
+7. **GUI skeleton** — FastAPI + minimal frontend. Build before worker parallelization so
    you can observe the system from the beginning, not as an afterthought.
 
-7. **Single worker, end-to-end, static analysis only** — prove the full pipeline (Phase 0
+8. **Single worker, end-to-end, static analysis only** — prove the full pipeline (Phase 0
    artifacts → worker → finding with exploit + CWE + suggested fix) on one worker before
    any parallelization.
 
-8. **Worker parallelization** — once single-worker pipeline is proven stable.
+9. **Worker parallelization** — once single-worker pipeline is proven stable.
 
-9. **Dynamic analysis pipeline** — Phase 2 + Phase 3a (testbench compilation, simulation
-   coordination, waveform routing).
+10. **Dynamic analysis pipeline** — Phase 2 + Phase 3a (testbench compilation, simulation
+    coordination, waveform routing).
 
-10. **Master AI** — hallucination checking, exploit chaining, final report assembly
+11. **Master AI** — hallucination checking, exploit chaining, final report assembly
     (Phase 4 + Phase 5). Activated last because it depends on all worker output existing.
 
-11. **Re-check AI** — small addition once Master AI is working; hooks into existing
+12. **Re-check AI** — small addition once Master AI is working; hooks into existing
     finding registry and GUI.
 
-12. **Formal verification** — SymbiYosys + Boolector/Z3, SVA property generation (Stage 6).
+13. **Formal verification** — SymbiYosys + Boolector/Z3, SVA property generation (Stage 6).
 
-13. **IFT tool** — custom Python graph traversal (Stage 7).
+14. **IFT tool** — custom Python graph traversal (Stage 7).
 
-14. **Coverage-guided fuzzing** — Phase 3b, last, most research-heavy component.
+15. **Coverage-guided fuzzing** — Phase 3b, last, most research-heavy component.
