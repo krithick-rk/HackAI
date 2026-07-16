@@ -240,6 +240,7 @@ def api_run(payload: RunPayload):
     try:
         proc = subprocess.Popen(
             cmd,
+            stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=os.getcwd(),
@@ -371,6 +372,136 @@ def api_status():
         "failed": failed,
         "logs": state.logs,
         "modules": modules_list
+    }
+
+@app.post("/api/repair")
+def api_repair():
+    global state
+    if state.process is not None:
+        return {"status": "already_running"}
+
+    # Recover configuration if missing in memory
+    if not state.output_dir:
+        saved_config, saved_duplicates = load_project_config("opentitan")
+        if saved_config:
+            state.project_name = "opentitan"
+            state.design_dir = saved_config.get("design_dir", "")
+            state.output_dir = saved_config.get("output_dir", "workspace/opentitan_artifacts")
+            state.exclude_patterns = saved_config.get("exclude_patterns", [])
+            state.resolved_duplicates = saved_duplicates
+
+    if not state.design_dir:
+        raise HTTPException(status_code=400, detail="No design directory configured yet. Run pre-scan first.")
+
+    # Clear old run logs
+    state.logs = ["Launching Throwaway AI Failure Repairer..."]
+    save_console_logs()
+
+    # Build command line to run with --repair-failures
+    cmd = [
+        sys.executable,
+        "verify_pipeline.py",
+        "-d", state.design_dir,
+        "-o", state.output_dir,
+        "--repair-failures"
+    ]
+    if state.exclude_patterns:
+        cmd.append("-x")
+        cmd.extend(state.exclude_patterns)
+
+    # Launch process
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            cwd=os.getcwd(),
+            env={**os.environ, "PYTHONPATH": os.getcwd()}
+        )
+        state.process = proc
+        state.thread = threading.Thread(target=read_process_output, args=(proc,))
+        state.thread.start()
+        return {"status": "started"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class InputPayload(BaseModel):
+    input_text: str
+
+@app.post("/api/input")
+def api_input(payload: InputPayload):
+    global state
+    if state.process is not None and state.process.stdin is not None:
+        try:
+            # Send input to stdin
+            state.process.stdin.write((payload.input_text + "\n").encode('utf-8'))
+            state.process.stdin.flush()
+            # Log the sent command
+            state.logs.append(f"> {payload.input_text}")
+            save_console_logs()
+            return {"status": "success"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to write to stdin: {e}")
+    raise HTTPException(status_code=400, detail="No active process running to receive input.")
+
+@app.post("/api/proceed")
+def api_proceed():
+    global state
+    # Recover configuration if missing in memory
+    if not state.output_dir:
+        saved_config, _ = load_project_config("opentitan")
+        if saved_config:
+            state.output_dir = saved_config.get("output_dir", "workspace/opentitan_artifacts")
+            
+    if not state.output_dir:
+        raise HTTPException(status_code=400, detail="No project output directory is configured.")
+
+    per_module_dir = os.path.join(state.output_dir, "per_module")
+    if not os.path.exists(per_module_dir):
+        raise HTTPException(status_code=400, detail="No per-module validation data exists yet. Run validation first.")
+
+    # Scans the validation status of each module
+    approved_modules = []
+    failed_modules = []
+    
+    for mod_name in os.listdir(per_module_dir):
+        mod_path = os.path.join(per_module_dir, mod_name)
+        if os.path.isdir(mod_path):
+            status_file = os.path.join(mod_path, "validation_status.json")
+            if os.path.exists(status_file):
+                try:
+                    with open(status_file, "r") as sf:
+                        sdata = json.load(sf)
+                        statuses = [sdata.get(t) for t in ["slang", "verilator", "verible"] if t in sdata]
+                        
+                        if any(s in ("FAILED", "TOOL_UNAVAILABLE") for s in statuses):
+                            failed_modules.append(mod_name)
+                        else:
+                            approved_modules.append(mod_name)
+                except Exception:
+                    pass
+
+    # Save to active_modules.json
+    shared_dir = os.path.join(state.output_dir, "shared")
+    os.makedirs(shared_dir, exist_ok=True)
+    active_modules_path = os.path.join(shared_dir, "active_modules.json")
+    
+    with open(active_modules_path, "w") as f:
+        json.dump({
+            "active_modules": approved_modules,
+            "failed_modules_ignored": failed_modules
+        }, f, indent=2)
+
+    # Append notification log
+    msg = f"Proceeding to Downstream Workers: Registered {len(approved_modules)} active modules (Ignored {len(failed_modules)} failed modules)."
+    state.logs.append(msg)
+    save_console_logs()
+
+    return {
+        "status": "success",
+        "active_modules": approved_modules,
+        "failed_modules_ignored": failed_modules
     }
 
 # Serve Svelte compiled files if present, otherwise serve a build hint page

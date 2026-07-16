@@ -428,10 +428,87 @@
     }
   }
 
+  // Persist config fields and current step in localStorage to handle refreshes
+  $: if (typeof window !== 'undefined') {
+    localStorage.setItem('projectName', projectName);
+    localStorage.setItem('designDir', designDir);
+    localStorage.setItem('step', step);
+  }
+
   onMount(() => {
-    // Check if a run is already active
+    // Recover state from localStorage
+    const savedProjectName = localStorage.getItem('projectName');
+    const savedDesignDir = localStorage.getItem('designDir');
+    const savedStep = localStorage.getItem('step');
+    if (savedProjectName) projectName = savedProjectName;
+    if (savedDesignDir) designDir = savedDesignDir;
+    if (savedStep && (savedStep === 'config' || savedStep === 'results')) {
+      step = savedStep as any;
+    }
+    
+    // Check if a run is already active (overrides to 'running' if true)
     pollStatus();
   });
+
+  let isRepairing = false;
+  async function handleRepair() {
+    try {
+      isRepairing = true;
+      runStatus = {
+        running: true,
+        progress: 0,
+        total_modules: 0,
+        completed_modules: 0,
+        fully_validated: 0,
+        partially_validated: 0,
+        failed: 0,
+        logs: ["Launching interactive Failure Repairer..."]
+      };
+      modulesList = [];
+      await apiCall('/api/repair');
+      step = 'running';
+      pollStatus();
+    } catch (e) {
+      configError = 'Failed to launch failure repair.';
+    } finally {
+      isRepairing = false;
+    }
+  }
+
+  let isProceeding = false;
+  let proceedStatus = '';
+  async function handleProceed() {
+    try {
+      isProceeding = true;
+      proceedStatus = 'Registering active modules...';
+      const res = await apiCall('/api/proceed');
+      if (res.status === 'success') {
+        proceedStatus = `Successfully proceeded with ${res.active_modules.length} modules!`;
+        setTimeout(() => {
+          proceedStatus = '';
+        }, 5000);
+      }
+    } catch (e) {
+      proceedStatus = 'Failed to proceed.';
+      setTimeout(() => {
+        proceedStatus = '';
+      }, 5000);
+    } finally {
+      isProceeding = false;
+    }
+  }
+
+  let consoleInputText = '';
+  async function handleConsoleInputSubmit() {
+    if (!consoleInputText.trim()) return;
+    try {
+      const text = consoleInputText.trim();
+      consoleInputText = '';
+      await apiCall('/api/input', { input_text: text });
+    } catch (e) {
+      console.error('Failed to send console input:', e);
+    }
+  }
 
   $: filteredModules = modulesList.filter(m => {
     const matchesSearch = m.name.toLowerCase().includes(filterText.toLowerCase());
@@ -593,9 +670,20 @@
             <div class="stats-header">
               <h2>Validation Status</h2>
               {#if step === 'results'}
-                <div style="display: flex; gap: 0.5rem;">
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                   <button class="btn btn-secondary btn-sm" on:click={() => step = 'config'}>Configure</button>
-                  <button class="btn btn-primary btn-sm" on:click={handleReRun}>Clean & Re-run</button>
+                  <button class="btn btn-secondary btn-sm" on:click={handleReRun}>Clean & Re-run</button>
+                  {#if runStatus.failed > 0}
+                    <button class="btn btn-warning btn-sm" on:click={handleRepair} disabled={isRepairing}>
+                      {isRepairing ? 'Repairing...' : 'Launch Failure Repair'}
+                    </button>
+                  {/if}
+                  <button class="btn btn-success btn-sm" on:click={handleProceed} disabled={isProceeding}>
+                    {isProceeding ? 'Proceeding...' : 'Proceed to Workers'}
+                  </button>
+                  {#if proceedStatus}
+                    <span style="font-size: 0.85rem; color: var(--success-green); margin-left: 0.5rem;">{proceedStatus}</span>
+                  {/if}
                 </div>
               {/if}
             </div>
@@ -686,6 +774,18 @@
               <div class="console-line">{log}</div>
             {/each}
           </div>
+          {#if runStatus.running}
+            <div class="console-input-area">
+              <input 
+                type="text" 
+                placeholder="Type response (e.g. y/n) and press Enter..." 
+                bind:value={consoleInputText} 
+                on:keydown={(e) => e.key === 'Enter' && handleConsoleInputSubmit()} 
+                class="console-input-field"
+              />
+              <button class="btn btn-primary btn-sm" on:click={handleConsoleInputSubmit}>Send</button>
+            </div>
+          {/if}
         </section>
       </div>
     {/if}
@@ -1231,6 +1331,33 @@
   .console-line {
     margin-bottom: 0.25rem;
     line-height: 1.4;
+  }
+
+  .console-input-area {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-top: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    margin-top: -1px;
+  }
+
+  .console-input-field {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 0.5rem;
+    color: var(--text-primary);
+    font-family: monospace;
+  }
+
+  .console-input-field:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
   }
 
   .existing-run-alert {
