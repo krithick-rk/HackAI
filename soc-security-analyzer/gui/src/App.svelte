@@ -86,6 +86,48 @@
   let initialExclusions: Set<string> = new Set();
   let initialDuplicates: Record<string, string> = {};
 
+  // Phase navigation and Phase 0.3 Context Viewer state
+  let activePhase: 'phase-0.1-0.2' | 'phase-0.3' | 'phase-1' | 'phase-2' | 'phase-3' = 'phase-0.1-0.2';
+  let contextData: any = null;
+  let selectedContextModule: string = '';
+  let contextSubTab: 'hierarchy' | 'secrets' | 'trust' = 'hierarchy';
+  let flatHierarchy: Array<{ name: string; instName: string; level: number }> = [];
+
+  function computeFlatHierarchy(hierarchyObj: any) {
+    const result: Array<{ name: string; instName: string; level: number }> = [];
+    
+    function traverse(node: any, level = 0) {
+      if (!node) return;
+      const name = node.module_name || node.name || "Unknown";
+      const instName = node.instance_name || "";
+      result.push({ name, instName, level });
+      if (node.children && Array.isArray(node.children)) {
+        node.children.forEach((child: any) => traverse(child, level + 1));
+      }
+    }
+
+    if (hierarchyObj && typeof hierarchyObj === 'object') {
+      if (hierarchyObj.module_name || hierarchyObj.name) {
+        traverse(hierarchyObj);
+      } else {
+        Object.values(hierarchyObj).forEach((tree: any) => traverse(tree));
+      }
+    }
+    flatHierarchy = result;
+  }
+
+  async function fetchContext() {
+    try {
+      const data = await apiCall('/api/context');
+      contextData = data;
+      if (contextData && contextData.module_hierarchy) {
+        computeFlatHierarchy(contextData.module_hierarchy);
+      }
+    } catch (e) {
+      console.error("Failed to fetch context:", e);
+    }
+  }
+
   function toggleHideUnselected() {
     hideUnselected = !hideUnselected;
     if (hideUnselected) {
@@ -428,11 +470,16 @@
     }
   }
 
-  // Persist config fields and current step in localStorage to handle refreshes
+  // Persist config fields, current step and active phase in localStorage to handle refreshes
   $: if (typeof window !== 'undefined') {
     localStorage.setItem('projectName', projectName);
     localStorage.setItem('designDir', designDir);
     localStorage.setItem('step', step);
+    localStorage.setItem('activePhase', activePhase);
+  }
+
+  $: if (step === 'results') {
+    fetchContext();
   }
 
   onMount(() => {
@@ -440,10 +487,14 @@
     const savedProjectName = localStorage.getItem('projectName');
     const savedDesignDir = localStorage.getItem('designDir');
     const savedStep = localStorage.getItem('step');
+    const savedActivePhase = localStorage.getItem('activePhase');
     if (savedProjectName) projectName = savedProjectName;
     if (savedDesignDir) designDir = savedDesignDir;
-    if (savedStep && (savedStep === 'config' || savedStep === 'results')) {
+    if (savedStep && (savedStep === 'config' || savedStep === 'results' || savedStep === 'running')) {
       step = savedStep as any;
+    }
+    if (savedActivePhase) {
+      activePhase = savedActivePhase as any;
     }
     
     // Check if a run is already active (overrides to 'running' if true)
@@ -552,7 +603,7 @@
               <p>We found {runStatus.completed_modules} completed modules for project "{projectName}" on disk.</p>
             </div>
             <div class="alert-actions">
-              <button class="btn btn-secondary btn-sm" on:click={() => step = 'results'}>Load Previous Results</button>
+              <button class="btn btn-secondary btn-sm" on:click={() => { step = 'results'; activePhase = 'phase-0.1-0.2'; }}>Load Previous Results</button>
             </div>
           </div>
         {/if}
@@ -576,217 +627,470 @@
 
         <button class="btn btn-primary" on:click={handlePreScan}>Discover Assets & Exclusions</button>
       </section>
-    {/if}
-
-    <!-- CONFIGURATION STEP -->
-    {#if step === 'config'}
-      <div class="config-grid">
-        <!-- Exclusion Panel -->
-        <section class="card glass scrollable">
-          <div class="panel-header-row">
-            <h2>Directory Selection</h2>
+    {:else}
+      <!-- SPLIT SIDEBAR LAYOUT -->
+      <div class="dashboard-layout">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+          <div class="sidebar-section">
+            <h3>Phase 0: Validation & Setup</h3>
             <button 
-              type="button"
-              class="btn btn-secondary btn-sm" 
-              on:click={toggleHideUnselected} 
-              title="Toggle collapse / hide of unselected folders"
+              class="sidebar-item {activePhase === 'phase-0.1-0.2' ? 'active' : ''}" 
+              on:click={() => activePhase = 'phase-0.1-0.2'}
             >
-              {hideUnselected ? "Show All Folders" : "Collapse Unselected"}
+              <span class="icon">🔍</span> Validation & Repair
+            </button>
+            <button 
+              class="sidebar-item {activePhase === 'phase-0.3' ? 'active' : ''}" 
+              on:click={() => { activePhase = 'phase-0.3'; fetchContext(); }}
+              disabled={step === 'config'}
+              title={step === 'config' ? 'Complete validation first to unlock' : ''}
+            >
+              <span class="icon">🌳</span> Design Context (Phase 0.3)
             </button>
           </div>
-          <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs. Unselected folders will be collapsed and hidden when you click "Collapse Unselected".</p>
-          
-          <div class="tree-list">
-            {#each folderTree as rootNode}
-              <FolderTreeNode 
-                node={rootNode} 
-                {excludedFolders} 
-                {expandedNodes} 
-                {hideUnselected}
-                on:toggleCheck={handleTreeCheckToggle}
-                on:toggleExpand={handleTreeExpandToggle}
-              />
-            {/each}
+
+          <div class="sidebar-section">
+            <h3>Phase 1-3: Auditing & Proofs</h3>
+            <button 
+              class="sidebar-item {activePhase === 'phase-1' ? 'active' : ''}" 
+              on:click={() => activePhase = 'phase-1'}
+            >
+              <span class="icon">🤖</span> Worker Static Audits <span class="badge-lock">🔒</span>
+            </button>
+            <button 
+              class="sidebar-item {activePhase === 'phase-2' ? 'active' : ''}" 
+              on:click={() => activePhase = 'phase-2'}
+            >
+              <span class="icon">📊</span> Waveform Analysis <span class="badge-lock">🔒</span>
+            </button>
+            <button 
+              class="sidebar-item {activePhase === 'phase-3' ? 'active' : ''}" 
+              on:click={() => activePhase = 'phase-3'}
+            >
+              <span class="icon">🛡️</span> Formal Security Proofs <span class="badge-lock">🔒</span>
+            </button>
           </div>
-        </section>
 
-        <!-- Conflict Resolution Panel -->
-        <section class="card glass scrollable">
-          <h2>Duplicate Module Definitions</h2>
-          <p class="subtitle">We found the same module defined in multiple files. Choose which definition to keep active to prevent build conflicts.</p>
+          <div class="sidebar-footer">
+            <button class="btn btn-secondary btn-sm w-100" on:click={() => { step = 'setup'; activePhase = 'phase-0.1-0.2'; }}>
+              ← Change Project
+            </button>
+          </div>
+        </aside>
 
-          {#if preScanData.duplicates.length === 0}
-            <div class="empty-state">No duplicate module definition conflicts found.</div>
-          {:else}
-            <div class="duplicate-list">
-              {#each preScanData.duplicates as dup}
-                <div class="duplicate-card">
-                  <h3>Module: <code>{dup.module}</code></h3>
-                  <div class="radio-group">
-                    {#each dup.paths as p}
-                      <label class="radio-label">
-                        <input 
-                          type="radio" 
-                          name={dup.module} 
-                          value={p} 
-                          bind:group={resolvedDuplicates[dup.module]} 
-                        />
-                        <span class="file-path-radio">{p}</span>
-                      </label>
+        <!-- Main Workspace -->
+        <div class="main-workspace">
+          {#if activePhase === 'phase-0.1-0.2'}
+            <!-- CONFIGURATION STEP -->
+            {#if step === 'config'}
+              <div class="config-grid">
+                <!-- Exclusion Panel -->
+                <section class="card glass scrollable">
+                  <div class="panel-header-row">
+                    <h2>Directory Selection</h2>
+                    <button 
+                      type="button"
+                      class="btn btn-secondary btn-sm" 
+                      on:click={toggleHideUnselected} 
+                      title="Toggle collapse / hide of unselected folders"
+                    >
+                      {hideUnselected ? "Show All Folders" : "Collapse Unselected"}
+                    </button>
+                  </div>
+                  <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs. Unselected folders will be collapsed and hidden when you click "Collapse Unselected".</p>
+                  
+                  <div class="tree-list">
+                    {#each folderTree as rootNode}
+                      <FolderTreeNode 
+                        node={rootNode} 
+                        {excludedFolders} 
+                        {expandedNodes} 
+                        {hideUnselected}
+                        on:toggleCheck={handleTreeCheckToggle}
+                        on:toggleExpand={handleTreeExpandToggle}
+                      />
                     {/each}
                   </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
+                </section>
 
-          <div class="action-footer">
-            <input 
-              type="file" 
-              accept=".json" 
-              style="display: none" 
-              bind:this={fileInput} 
-              on:change={handleFileLoad} 
-            />
-            <button class="btn btn-secondary" on:click={() => step = 'setup'}>Back</button>
-            <button class="btn btn-secondary" on:click={triggerFilePicker}>Load Config File</button>
-            <button class="btn btn-secondary" on:click={handleRestoreConfig}>Restore Saved</button>
-            <button class="btn btn-info" on:click={handleSaveConfigOnly}>Save Config</button>
-            <button class="btn btn-primary" on:click={handleStartRun}>Launch Pipeline</button>
-            {#if saveConfigStatus}
-              <span class="status-msg">{saveConfigStatus}</span>
+                <!-- Conflict Resolution Panel -->
+                <section class="card glass scrollable">
+                  <h2>Duplicate Module Definitions</h2>
+                  <p class="subtitle">We found the same module defined in multiple files. Choose which definition to keep active to prevent build conflicts.</p>
+
+                  {#if preScanData.duplicates.length === 0}
+                    <div class="empty-state">No duplicate module definition conflicts found.</div>
+                  {:else}
+                    <div class="duplicate-list">
+                      {#each preScanData.duplicates as dup}
+                        <div class="duplicate-card">
+                          <h3>Module: <code>{dup.module}</code></h3>
+                          <div class="radio-group">
+                            {#each dup.paths as p}
+                              <label class="radio-label">
+                                <input 
+                                  type="radio" 
+                                  name={dup.module} 
+                                  value={p} 
+                                  bind:group={resolvedDuplicates[dup.module]} 
+                                />
+                                <span class="file-path-radio">{p}</span>
+                              </label>
+                            {/each}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
+
+                  <div class="action-footer">
+                    <input 
+                      type="file" 
+                      accept=".json" 
+                      style="display: none" 
+                      bind:this={fileInput} 
+                      on:change={handleFileLoad} 
+                    />
+                    <button class="btn btn-secondary" on:click={() => step = 'setup'}>Back</button>
+                    <button class="btn btn-secondary" on:click={triggerFilePicker}>Load Config File</button>
+                    <button class="btn btn-secondary" on:click={handleRestoreConfig}>Restore Saved</button>
+                    <button class="btn btn-info" on:click={handleSaveConfigOnly}>Save Config</button>
+                    <button class="btn btn-primary" on:click={handleStartRun}>Launch Pipeline</button>
+                    {#if saveConfigStatus}
+                      <span class="status-msg">{saveConfigStatus}</span>
+                    {/if}
+                  </div>
+                </section>
+              </div>
             {/if}
-          </div>
-        </section>
-      </div>
-    {/if}
 
-    <!-- RUNNING / RESULTS MONITOR STEP -->
-    {#if step === 'running' || step === 'results'}
-      <div class="results-grid">
-        <!-- Left Side: Stats and Module List -->
-        <div class="left-panel">
-          <section class="card glass stats-card">
-            <div class="stats-header">
-              <h2>Validation Status</h2>
-              {#if step === 'results'}
-                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                  <button class="btn btn-secondary btn-sm" on:click={() => step = 'config'}>Configure</button>
-                  <button class="btn btn-secondary btn-sm" on:click={handleReRun}>Clean & Re-run</button>
-                  {#if runStatus.failed > 0}
-                    <button class="btn btn-warning btn-sm" on:click={handleRepair} disabled={isRepairing}>
-                      {isRepairing ? 'Repairing...' : 'Launch Failure Repair'}
-                    </button>
+            <!-- RUNNING / RESULTS MONITOR STEP -->
+            {#if step === 'running' || step === 'results'}
+              <div class="results-grid">
+                <!-- Left Side: Stats and Module List -->
+                <div class="left-panel">
+                  <section class="card glass stats-card">
+                    <div class="stats-header">
+                      <h2>Validation Status</h2>
+                      {#if step === 'results'}
+                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                          <button class="btn btn-secondary btn-sm" on:click={() => step = 'config'}>Configure</button>
+                          <button class="btn btn-secondary btn-sm" on:click={handleReRun}>Clean & Re-run</button>
+                          {#if runStatus.failed > 0}
+                            <button class="btn btn-warning btn-sm" on:click={handleRepair} disabled={isRepairing}>
+                              {isRepairing ? 'Repairing...' : 'Launch Failure Repair'}
+                            </button>
+                          {/if}
+                          <button class="btn btn-success btn-sm" on:click={handleProceed} disabled={isProceeding}>
+                            {isProceeding ? 'Proceeding...' : 'Proceed to Workers'}
+                          </button>
+                          {#if proceedStatus}
+                            <span style="font-size: 0.85rem; color: var(--success-green); margin-left: 0.5rem;">{proceedStatus}</span>
+                          {/if}
+                        </div>
+                      {/if}
+                    </div>
+                    
+                    <div class="progress-bar-container">
+                      <div class="progress-info">
+                        <span>Verification Progress</span>
+                        <span>{runStatus.completed_modules} / {runStatus.total_modules} Modules</span>
+                      </div>
+                      <div class="progress-track">
+                        <div class="progress-fill" style="width: {runStatus.progress}%"></div>
+                      </div>
+                    </div>
+
+                    <div class="stats-counters">
+                      <div class="stat-box success">
+                        <span class="number">{runStatus.fully_validated}</span>
+                        <span class="label">Fully Validated</span>
+                      </div>
+                      <div class="stat-box partial">
+                        <span class="number">{runStatus.partially_validated}</span>
+                        <span class="label">Missing Stub</span>
+                      </div>
+                      <div class="stat-box danger">
+                        <span class="number">{runStatus.failed}</span>
+                        <span class="label">Failed</span>
+                      </div>
+                    </div>
+                  </section>
+
+                  <!-- Module List Grid -->
+                  <section class="card glass modules-list-card scrollable">
+                    <div class="list-header">
+                      <h2>Module Auditing Inventory</h2>
+                      <div class="filters">
+                        <input type="text" placeholder="Search module name..." bind:value={filterText} class="search-input" />
+                        <select bind:value={statusFilter} class="status-select">
+                          <option value="ALL">All Statuses</option>
+                          <option value="VALIDATED">Fully Validated</option>
+                          <option value="PARTIAL">Missing Stub</option>
+                          <option value="FAILED">Failed</option>
+                          <option value="UNVALIDATED">Queued</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="table-container">
+                      <table class="modules-table">
+                        <thead>
+                          <tr>
+                            <th>Module Name</th>
+                            <th>Status</th>
+                            <th>Defining Source File</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {#each filteredModules as mod}
+                            <tr>
+                              <td><strong>{mod.name}</strong></td>
+                              <td>
+                                {#if mod.status === 'FAILED' || mod.status === 'PARTIAL'}
+                                  <span 
+                                    class="badge status-{mod.status.toLowerCase()} clickable-badge" 
+                                    title="Click to view error diagnostics and stub details"
+                                    role="button"
+                                    tabindex="0"
+                                    on:click={() => selectedModuleForDetail = mod}
+                                    on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (selectedModuleForDetail = mod)}
+                                  >
+                                    {mod.status === 'PARTIAL' ? 'MISSING STUB' : mod.status}
+                                  </span>
+                                {:else}
+                                  <span class="badge status-{mod.status.toLowerCase()}">
+                                    {mod.status}
+                                  </span>
+                                {/if}
+                              </td>
+                              <td class="file-cell" title={mod.defined_in}>{mod.defined_in}</td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                </div>
+
+                <!-- Right Side: Live Logs -->
+                <section class="card glass console-card">
+                  <h2>Console Execution Stream</h2>
+                  <div class="console-box" id="console" bind:this={consoleElement}>
+                    {#each runStatus.logs as log}
+                      <div class="console-line">{log}</div>
+                    {/each}
+                  </div>
+                  {#if runStatus.running}
+                    <div class="console-input-area">
+                      <input 
+                        type="text" 
+                        placeholder="Type response (e.g. y/n) and press Enter..." 
+                        bind:value={consoleInputText} 
+                        on:keydown={(e) => e.key === 'Enter' && handleConsoleInputSubmit()} 
+                        class="console-input-field"
+                      />
+                      <button class="btn btn-primary btn-sm" on:click={handleConsoleInputSubmit}>Send</button>
+                    </div>
                   {/if}
-                  <button class="btn btn-success btn-sm" on:click={handleProceed} disabled={isProceeding}>
-                    {isProceeding ? 'Proceeding...' : 'Proceed to Workers'}
-                  </button>
-                  {#if proceedStatus}
-                    <span style="font-size: 0.85rem; color: var(--success-green); margin-left: 0.5rem;">{proceedStatus}</span>
-                  {/if}
+                </section>
+              </div>
+            {/if}
+
+          {:else if activePhase === 'phase-0.3'}
+            <!-- Context Viewer Panel -->
+            <section class="card glass context-panel">
+              <div class="panel-header-row">
+                <div>
+                  <h2>SoC Design Context (Phase 0.3)</h2>
+                  <p class="subtitle">Discovered design topology, trust boundaries, and keywords mapped from SystemVerilog source code analysis.</p>
+                </div>
+                <div class="tab-buttons">
+                  <button class="tab-btn {contextSubTab === 'hierarchy' ? 'active' : ''}" on:click={() => contextSubTab = 'hierarchy'}>Hierarchy Tree</button>
+                  <button class="tab-btn {contextSubTab === 'secrets' ? 'active' : ''}" on:click={() => contextSubTab = 'secrets'}>Secret Signals</button>
+                  <button class="tab-btn {contextSubTab === 'trust' ? 'active' : ''}" on:click={() => contextSubTab = 'trust'}>Trust Boundaries</button>
+                </div>
+              </div>
+
+              {#if !contextData || !contextData.module_hierarchy}
+                <div class="empty-state">
+                  <div class="pulse-dot"></div>
+                  <p>Design Context data is not yet available. Run the validation pipeline to generate AST contexts.</p>
+                </div>
+              {:else}
+                <div class="context-content-grid">
+                  <!-- Left side: Sub-tab specific content -->
+                  <div class="context-main-view scrollable">
+                    {#if contextSubTab === 'hierarchy'}
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h3>Instantiation Tree</h3>
+                        <button class="btn btn-secondary btn-sm" on:click={fetchContext}>Refresh Data</button>
+                      </div>
+                      <div class="tree-nodes-list">
+                        {#each flatHierarchy as node}
+                          <div 
+                            class="tree-node-item {selectedContextModule === node.name ? 'selected' : ''}" 
+                            style="padding-left: {node.level * 16 + 8}px"
+                            role="button"
+                            tabindex="0"
+                            on:click={() => selectedContextModule = node.name}
+                            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (selectedContextModule = node.name)}
+                          >
+                            <span class="tree-connector">├─</span>
+                            <span class="node-icon">📦</span>
+                            <strong>{node.name}</strong> 
+                            {#if node.instName}
+                              <span class="inst-name">({node.instName})</span>
+                            {/if}
+                          </div>
+                        {/each}
+                      </div>
+
+                    {:else if contextSubTab === 'secrets'}
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h3>Sensitive Signals & Registers</h3>
+                        <button class="btn btn-secondary btn-sm" on:click={fetchContext}>Refresh Data</button>
+                      </div>
+                      {#if !contextData.secret_signals || Object.keys(contextData.secret_signals).length === 0}
+                        <div class="empty-state">No secret signals tagged in this design.</div>
+                      {:else}
+                        <div class="table-container">
+                          <table class="modules-table">
+                            <thead>
+                              <tr>
+                                <th>Module</th>
+                                <th>Signal/Port Name</th>
+                                <th>Direction</th>
+                                <th>Type</th>
+                                <th>Reasoning</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {#each Object.entries(contextData.secret_signals) as [mod, signals]}
+                                {#if Array.isArray(signals)}
+                                  {#each signals as sig}
+                                    <tr class="clickable-row" role="button" tabindex="0" on:click={() => selectedContextModule = mod} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (selectedContextModule = mod)}>
+                                      <td><strong>{mod}</strong></td>
+                                      <td><code class="secret-code">{sig.name || sig}</code></td>
+                                      <td>{sig.direction || 'internal'}</td>
+                                      <td>{sig.type || 'logic'}</td>
+                                      <td><span class="reason-tag">{sig.reason || 'Keyword matched'}</span></td>
+                                    </tr>
+                                  {/each}
+                                {/if}
+                              {/each}
+                            </tbody>
+                          </table>
+                        </div>
+                      {/if}
+
+                    {:else if contextSubTab === 'trust'}
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                        <h3>Trust Boundaries & Clocks</h3>
+                        <button class="btn btn-secondary btn-sm" on:click={fetchContext}>Refresh Data</button>
+                      </div>
+                      {#if !contextData.trust_boundaries || Object.keys(contextData.trust_boundaries).length === 0}
+                        <div class="empty-state">No trust boundary mappings found.</div>
+                      {:else}
+                        <div class="table-container">
+                          <table class="modules-table">
+                            <thead>
+                              <tr>
+                                <th>Module Name</th>
+                                <th>Security Trust Boundary</th>
+                                <th>Clock/Reset Pins</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {#each Object.entries(contextData.trust_boundaries) as [mod, boundary]}
+                                <tr class="clickable-row" role="button" tabindex="0" on:click={() => selectedContextModule = mod} on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (selectedContextModule = mod)}>
+                                  <td><strong>{mod}</strong></td>
+                                  <td>
+                                    <span class="badge trust-{String(boundary).toLowerCase().replace('_', '-')}">
+                                      {boundary}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {#if contextData.clock_domains && contextData.clock_domains[mod]}
+                                      <code>{contextData.clock_domains[mod].clock || 'clk'}</code> / <code>{contextData.clock_domains[mod].reset || 'rst_n'}</code>
+                                    {:else}
+                                      <span class="text-muted">Default (clk / rst_n)</span>
+                                    {/if}
+                                  </td>
+                                </tr>
+                              {/each}
+                            </tbody>
+                          </table>
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+
+                  <!-- Right side: Selected Module Profile card -->
+                  <div class="context-detail-panel card glass">
+                    {#if selectedContextModule}
+                      <div class="detail-header-row">
+                        <h3>Module Profile: <code>{selectedContextModule}</code></h3>
+                        <button class="close-btn" on:click={() => selectedContextModule = ''}>&times;</button>
+                      </div>
+                      
+                      <div class="profile-field">
+                        <span class="profile-label">Trust Boundary Classification:</span>
+                        <span class="badge trust-{String(contextData.trust_boundaries?.[selectedContextModule] || 'INTERNAL_LOGIC').toLowerCase().replace('_', '-')}">
+                          {contextData.trust_boundaries?.[selectedContextModule] || 'INTERNAL_LOGIC'}
+                        </span>
+                      </div>
+
+                      <div class="profile-field">
+                        <span class="profile-label">Clock Domain:</span>
+                        <code>{contextData.clock_domains?.[selectedContextModule]?.clock || 'clk'}</code> (Reset: <code>{contextData.clock_domains?.[selectedContextModule]?.reset || 'rst_n'}</code>)
+                      </div>
+
+                      <div class="profile-field">
+                        <span class="profile-label">Security Summary & Context:</span>
+                        <div class="summary-box">
+                          {contextData.module_summaries?.[selectedContextModule] || 'No summary text generated for this module.'}
+                        </div>
+                      </div>
+
+                      <div class="profile-field">
+                        <span class="profile-label">Tagged Secrets ({contextData.secret_signals?.[selectedContextModule]?.length || 0}):</span>
+                        {#if contextData.secret_signals?.[selectedContextModule] && contextData.secret_signals[selectedContextModule].length > 0}
+                          <ul class="secrets-bullet-list">
+                            {#each contextData.secret_signals[selectedContextModule] as sig}
+                              <li>
+                                <code class="secret-code">{sig.name || sig}</code> 
+                                <span class="sig-meta">({sig.direction || 'internal'} {sig.type || 'logic'}) - {sig.reason || 'Keyword match'}</span>
+                              </li>
+                            {/each}
+                          </ul>
+                        {:else}
+                          <p class="empty-text">No secret signal tags inside this module.</p>
+                        {/if}
+                      </div>
+                    {:else}
+                      <div class="empty-detail-state">
+                        <span class="icon">📋</span>
+                        <p>Select a module from the hierarchy tree or tables to inspect its deep security profile and compressed text summaries.</p>
+                      </div>
+                    {/if}
+                  </div>
                 </div>
               {/if}
-            </div>
-            
-            <div class="progress-bar-container">
-              <div class="progress-info">
-                <span>Verification Progress</span>
-                <span>{runStatus.completed_modules} / {runStatus.total_modules} Modules</span>
-              </div>
-              <div class="progress-track">
-                <div class="progress-fill" style="width: {runStatus.progress}%"></div>
-              </div>
-            </div>
+            </section>
 
-            <div class="stats-counters">
-              <div class="stat-box success">
-                <span class="number">{runStatus.fully_validated}</span>
-                <span class="label">Fully Validated</span>
+          {:else}
+            <!-- LOCKED PHASES PLACEHOLDER -->
+            <section class="card glass locked-panel">
+              <div class="locked-card-content">
+                <span class="locked-icon">🔒</span>
+                <h2>{activePhase === 'phase-1' ? 'Phase 1: Worker Static Auditing' : activePhase === 'phase-2' ? 'Phase 2: Waveform Security Analysis' : 'Phase 3: Formal Security Proofs'}</h2>
+                <p class="subtitle">This phase is currently locked. Complete Phase 0 (Environment Validation, Repair, and Design Context Generation) and click "Proceed to Workers" to forward approved modules to worker agents.</p>
+                <button class="btn btn-secondary btn-sm" on:click={() => activePhase = 'phase-0.1-0.2'}>← Go Back to Validation</button>
               </div>
-              <div class="stat-box partial">
-                <span class="number">{runStatus.partially_validated}</span>
-                <span class="label">Missing Stub</span>
-              </div>
-              <div class="stat-box danger">
-                <span class="number">{runStatus.failed}</span>
-                <span class="label">Failed</span>
-              </div>
-            </div>
-          </section>
-
-          <!-- Module List Grid -->
-          <section class="card glass modules-list-card scrollable">
-            <div class="list-header">
-              <h2>Module Auditing Inventory</h2>
-              <div class="filters">
-                <input type="text" placeholder="Search module name..." bind:value={filterText} class="search-input" />
-                <select bind:value={statusFilter} class="status-select">
-                  <option value="ALL">All Statuses</option>
-                  <option value="VALIDATED">Fully Validated</option>
-                  <option value="PARTIAL">Missing Stub</option>
-                  <option value="FAILED">Failed</option>
-                  <option value="UNVALIDATED">Queued</option>
-                </select>
-              </div>
-            </div>
-            <div class="table-container">
-              <table class="modules-table">
-                <thead>
-                  <tr>
-                    <th>Module Name</th>
-                    <th>Status</th>
-                    <th>Defining Source File</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {#each filteredModules as mod}
-                    <tr>
-                      <td><strong>{mod.name}</strong></td>
-                      <td>
-                        {#if mod.status === 'FAILED' || mod.status === 'PARTIAL'}
-                          <span 
-                            class="badge status-{mod.status.toLowerCase()} clickable-badge" 
-                            title="Click to view error diagnostics and stub details"
-                            on:click={() => selectedModuleForDetail = mod}
-                          >
-                            {mod.status === 'PARTIAL' ? 'MISSING STUB' : mod.status}
-                          </span>
-                        {:else}
-                          <span class="badge status-{mod.status.toLowerCase()}">
-                            {mod.status}
-                          </span>
-                        {/if}
-                      </td>
-                      <td class="file-cell" title={mod.defined_in}>{mod.defined_in}</td>
-                    </tr>
-                  {/each}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-
-        <!-- Right Side: Live Logs -->
-        <section class="card glass console-card">
-          <h2>Console Execution Stream</h2>
-          <div class="console-box" id="console" bind:this={consoleElement}>
-            {#each runStatus.logs as log}
-              <div class="console-line">{log}</div>
-            {/each}
-          </div>
-          {#if runStatus.running}
-            <div class="console-input-area">
-              <input 
-                type="text" 
-                placeholder="Type response (e.g. y/n) and press Enter..." 
-                bind:value={consoleInputText} 
-                on:keydown={(e) => e.key === 'Enter' && handleConsoleInputSubmit()} 
-                class="console-input-field"
-              />
-              <button class="btn btn-primary btn-sm" on:click={handleConsoleInputSubmit}>Send</button>
-            </div>
+            </section>
           {/if}
-        </section>
+        </div>
       </div>
     {/if}
   </div>
@@ -808,8 +1112,8 @@
   {/if}
 
   {#if selectedModuleForDetail}
-    <div class="modal-backdrop" on:click={() => selectedModuleForDetail = null}>
-      <div class="modal card glass detail-modal" on:click|stopPropagation>
+    <div class="modal-backdrop" role="button" tabindex="0" on:click={() => selectedModuleForDetail = null} on:keydown={(e) => (e.key === 'Escape' || e.key === 'Enter') && (selectedModuleForDetail = null)}>
+      <div class="modal card glass detail-modal" role="dialog" aria-modal="true" on:click|stopPropagation on:keydown|stopPropagation>
         <div class="detail-header">
           <h2>Module Diagnostic Report: <code>{selectedModuleForDetail.name}</code></h2>
           <button class="close-btn" on:click={() => selectedModuleForDetail = null}>&times;</button>
@@ -1548,5 +1852,339 @@
     white-space: pre-wrap;
     max-height: 250px;
     overflow-y: auto;
+  }
+  /* Sidebar and split layout styles */
+  .dashboard-layout {
+    display: flex;
+    gap: 1.5rem;
+    height: calc(100vh - 100px);
+    width: 100%;
+    margin-top: 1rem;
+    box-sizing: border-box;
+  }
+
+  .sidebar {
+    width: 250px;
+    background: rgba(16, 24, 40, 0.45);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    backdrop-filter: blur(12px);
+    flex-shrink: 0;
+  }
+
+  .sidebar-section {
+    margin-bottom: 1.5rem;
+  }
+
+  .sidebar-section h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    margin-top: 0;
+    margin-bottom: 0.75rem;
+  }
+
+  .sidebar-item {
+    width: 100%;
+    background: none;
+    border: none;
+    text-align: left;
+    color: var(--text-secondary);
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .sidebar-item:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+  }
+
+  .sidebar-item.active {
+    background: rgba(0, 112, 243, 0.15);
+    border: 1px solid rgba(0, 112, 243, 0.3);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .sidebar-item:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .badge-lock {
+    margin-left: auto;
+    font-size: 0.75rem;
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+    margin-top: auto;
+  }
+
+  .main-workspace {
+    flex: 1;
+    height: 100%;
+    overflow-y: auto;
+    min-width: 0;
+  }
+
+  /* Phase 0.3 Context panel styles */
+  .context-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 1.5rem;
+    box-sizing: border-box;
+  }
+
+  .tab-buttons {
+    display: flex;
+    gap: 0.5rem;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 0.3rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+  }
+
+  .tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .tab-btn:hover {
+    color: var(--text-primary);
+  }
+
+  .tab-btn.active {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .context-content-grid {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .context-main-view {
+    flex: 1.3;
+    background: rgba(0, 0, 0, 0.15);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.25rem;
+    height: 580px;
+  }
+
+  .context-detail-panel {
+    flex: 1;
+    background: rgba(16, 24, 40, 0.35);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    overflow-y: auto;
+    height: 580px;
+  }
+
+  .tree-nodes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 1rem;
+  }
+
+  .tree-node-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+    border: 1px solid transparent;
+  }
+
+  .tree-node-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .tree-node-item.selected {
+    background: rgba(0, 223, 216, 0.08);
+    border-color: rgba(0, 223, 216, 0.25);
+    color: var(--accent-cyan);
+  }
+
+  .tree-connector {
+    color: var(--text-secondary);
+    opacity: 0.4;
+    font-family: monospace;
+  }
+
+  .inst-name {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-style: italic;
+  }
+
+  .secret-code {
+    color: #ff79c6;
+    background: rgba(255, 121, 198, 0.08);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 0.85rem;
+  }
+
+  .reason-tag {
+    color: var(--warning-amber);
+    background: rgba(255, 171, 0, 0.08);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+  }
+
+  .profile-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 0.75rem;
+  }
+
+  .profile-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.03em;
+  }
+
+  .summary-box {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1rem;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: #e1e4e8;
+    white-space: pre-wrap;
+  }
+
+  .secrets-bullet-list {
+    margin: 0;
+    padding-left: 1.2rem;
+  }
+
+  .secrets-bullet-list li {
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+  }
+
+  .sig-meta {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-left: 0.4rem;
+  }
+
+  .clickable-row {
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .clickable-row:hover {
+    background: rgba(255, 255, 255, 0.02) !important;
+  }
+
+  .empty-detail-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--text-secondary);
+    height: 100%;
+    gap: 1rem;
+  }
+
+  .empty-detail-state .icon {
+    font-size: 2.5rem;
+    opacity: 0.5;
+  }
+
+  .empty-detail-state p {
+    font-size: 0.85rem;
+    max-width: 250px;
+    line-height: 1.4;
+  }
+
+  /* Locked Panel Styles */
+  .locked-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 3rem;
+  }
+
+  .locked-card-content {
+    text-align: center;
+    max-width: 400px;
+  }
+
+  .locked-icon {
+    font-size: 3.5rem;
+    display: block;
+    margin-bottom: 1.5rem;
+    animation: pulse 2s infinite ease-in-out;
+  }
+
+  .w-100 {
+    width: 100%;
+  }
+
+  /* Trust boundaries badges styling */
+  .badge.trust-high-trust {
+    background: rgba(0, 230, 118, 0.12);
+    border: 1px solid rgba(0, 230, 118, 0.3);
+    color: var(--success-green);
+  }
+  .badge.trust-internal-logic {
+    background: rgba(0, 112, 243, 0.12);
+    border: 1px solid rgba(0, 112, 243, 0.3);
+    color: #4fc3f7;
+  }
+  .badge.trust-external-io {
+    background: rgba(255, 171, 0, 0.12);
+    border: 1px solid rgba(255, 171, 0, 0.3);
+    color: var(--warning-amber);
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.05); }
   }
 </style>

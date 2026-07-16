@@ -504,6 +504,26 @@ def api_proceed():
         "failed_modules_ignored": failed_modules
     }
 
+@app.get("/api/context")
+def api_context():
+    global state
+    if not state.output_dir:
+        saved_config, _ = load_project_config("opentitan")
+        if saved_config:
+            state.output_dir = saved_config.get("output_dir", "workspace/opentitan_artifacts")
+            
+    if not state.output_dir:
+        raise HTTPException(status_code=400, detail="No project output directory is configured.")
+
+    context_file = os.path.join(state.output_dir, "shared", "context_artifact.json")
+    if os.path.exists(context_file):
+        try:
+            with open(context_file, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read context file: {e}")
+    return {}
+
 # Serve Svelte compiled files if present, otherwise serve a build hint page
 gui_dist = os.path.abspath("gui/dist")
 if os.path.exists(gui_dist):
