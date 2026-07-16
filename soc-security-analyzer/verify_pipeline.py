@@ -178,7 +178,7 @@ def main():
                     validated_count += 1
                 elif any(s in ("FAILED", "TOOL_UNAVAILABLE") for s in statuses):
                     failed_count += 1
-                elif any(s == "NEEDS_STUB" for s in statuses):
+                elif any(s in ("NEEDS_STUB", "PARTIAL") for s in statuses):
                     missing_stub_count += 1
                     
     print(f"\nPhase 0 complete. Status summary:")
