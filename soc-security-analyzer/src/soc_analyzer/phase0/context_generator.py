@@ -364,8 +364,8 @@ def generate_context(output_dir: str):
         
         # 1. Attempt Slang AST dump if slang succeeded
         if slang_status in ("VALIDATED", "NEEDS_STUB", "PARTIAL") and files:
-            # We construct Slang CLI args to dump AST
-            cmd = ["slang", "--single-unit", "--relax-enum-conversions", "--timescale=1ns/1ps", "-Wno-multiple-cont-assigns", "--compat=all", "--ast-json", ast_json_path, "--ast-json-source-info"]
+            # We construct Slang CLI args to dump AST (omitting source-info to save 10x memory/space)
+            cmd = ["slang", "--single-unit", "--relax-enum-conversions", "--timescale=1ns/1ps", "-Wno-multiple-cont-assigns", "--compat=all", "--ast-json", ast_json_path]
             for p in include_paths:
                 cmd += ["-I", p]
             cmd += files
@@ -376,8 +376,17 @@ def generate_context(output_dir: str):
                     parsed_data = parse_slang_ast(ast_json_path)
                     if parsed_data:
                         ast_success = True
+                    try:
+                        os.remove(ast_json_path)
+                    except Exception as clean_err:
+                        print(f"   Failed to clean up AST JSON {ast_json_path}: {clean_err}")
             except Exception as e:
                 print(f"   Slang AST dump execution failed for {mod}: {e}")
+                if os.path.exists(ast_json_path):
+                    try:
+                        os.remove(ast_json_path)
+                    except:
+                        pass
                 
         # 2. Fallback to Python regex parser if Slang AST failed
         if not ast_success:
