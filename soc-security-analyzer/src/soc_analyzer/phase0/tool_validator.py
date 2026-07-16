@@ -854,8 +854,14 @@ def validate_tool_for_module(
             })
             
             if exit_code == 0:
-                final_status = "NEEDS_STUB" if stubs_created else "VALIDATED"
                 warning_count = compressed["summary"]["warning_count"]
+                if stubs_created:
+                    final_status = "NEEDS_STUB"
+                elif warning_count > 0:
+                    final_status = "PARTIAL"
+                else:
+                    final_status = "VALIDATED"
+                
                 if warning_count > 0:
                     final_summary = f"Validated with {warning_count} warning(s)"
                 else:

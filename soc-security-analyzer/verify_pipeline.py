@@ -138,11 +138,16 @@ def main():
     validate_environment(output_dir)
     print("   Validation completed successfully.")
     
+    print("\n4. Running Context Generator...")
+    from src.soc_analyzer.phase0.context_generator import generate_context
+    generate_context(output_dir)
+    
     # Check outputs
     shared_dir = os.path.join(output_dir, "shared")
     print("\nVerifying output artifacts:")
     print(f"   dependency_graph.json exists: {os.path.exists(os.path.join(shared_dir, 'dependency_graph.json'))}")
     print(f"   ambiguities.json exists: {os.path.exists(os.path.join(shared_dir, 'ambiguities.json'))}")
+    print(f"   context_artifact.json exists: {os.path.exists(os.path.join(shared_dir, 'context_artifact.json'))}")
     
     # Print status summary
     validated_count = 0

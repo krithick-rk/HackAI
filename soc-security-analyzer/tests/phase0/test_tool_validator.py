@@ -127,7 +127,7 @@ def test_tool_validator_needs_stub(mock_avail, temp_workspace):
         # Verify status in updated map
         map_path = os.path.join(temp_workspace, "per_module", "test_mod", "invocation_map.json")
         updated = read_json_artifact(map_path)
-        assert updated["verilator"]["status"] == "VALIDATED"
+        assert updated["verilator"]["status"] == "NEEDS_STUB"
         # Verify stub is added to slang/verilator files
         assert stub_file in updated["verilator"]["files"]
 
