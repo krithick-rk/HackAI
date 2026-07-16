@@ -12,6 +12,7 @@ def main():
     parser.add_argument("-i", "--include-dirs", nargs="*", help="Optional additional include directories")
     parser.add_argument("-x", "--exclude", nargs="*", default=["/dv/", "/pre_dv/", "/formal/", "/google_riscv-dv/", "/test/", "/tb/", "/vip/"],
                         help="Path patterns to exclude from recursive scanning (default: simulation/formal paths)")
+    parser.add_argument("--repair-failures", action="store_true", help="Interactively run LLM failure repair on failed modules")
     
     args = parser.parse_args()
     
@@ -148,6 +149,16 @@ def main():
     print(f"   dependency_graph.json exists: {os.path.exists(os.path.join(shared_dir, 'dependency_graph.json'))}")
     print(f"   ambiguities.json exists: {os.path.exists(os.path.join(shared_dir, 'ambiguities.json'))}")
     print(f"   context_artifact.json exists: {os.path.exists(os.path.join(shared_dir, 'context_artifact.json'))}")
+    
+    if args.repair_failures:
+        print("\n5. Running Tool Validation Failure Repairer...")
+        from src.soc_analyzer.phase0.failure_repairer import repair_failed_modules
+        repair_failed_modules(output_dir)
+        
+        # Re-run Context Generator to ensure repaired modules are captured
+        print("\nRe-running Context Generator...")
+        from src.soc_analyzer.phase0.context_generator import generate_context
+        generate_context(output_dir)
     
     # Print status summary
     validated_count = 0
