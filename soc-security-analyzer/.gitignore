@@ -31,3 +31,7 @@ workspace/
 **/workspace/
 *.log
 console_stream.json
+build/
+fusesoc.conf
+workspace/opentitan_artifacts/
+__pycache__/
