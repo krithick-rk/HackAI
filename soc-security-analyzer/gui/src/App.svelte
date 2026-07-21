@@ -87,16 +87,32 @@
   let initialDuplicates: Record<string, string> = {};
 
   // Phase navigation and Phase 0.3 Context Viewer state
-  let activePhase: 'phase-0.1-0.2' | 'phase-0.3' | 'phase-1' | 'phase-2' | 'phase-3' = 'phase-0.1-0.2';
+  let activePhase: 'phase-0.1-0.2' | 'phase-0.3' | 'phase-0.4' | 'phase-1' | 'phase-2' | 'phase-3' = 'phase-0.1-0.2';
   let contextData: any = null;
   let selectedContextModule: string = '';
   let contextSubTab: 'hierarchy' | 'secrets' | 'trust' = 'hierarchy';
   let flatHierarchy: Array<{ name: string; instName: string; level: number }> = [];
 
+  let synthesisStatus: { synthesis_running: boolean; synthesis_status?: string; synthesis_logs?: string[]; modules: Array<{ name: string; status: string; warning_count: number; error_count: number; risk_level: string }> } = { synthesis_running: false, synthesis_status: 'idle', synthesis_logs: [], modules: [] };
+  let selectedSynthesisModule: string = '';
+  let selectedSynthesisDetail: any = null;
+  let synthesisStatusInterval: any = null;
+  let showInternalModules: boolean = false;
+
+  let synthConfig = {
+    top_module: 'chip_earlgrey_asic',
+    fusesoc_cores_root: '',
+    fusesoc_core_name: '',
+    run_slang_elab_check: true,
+    auto_generate_stubs: true,
+    max_stub_retries: 3,
+    escalate_to_ai_on_failure: true
+  };
+
   let selectedConsoleLogTab: 'validation' | 'repair' = 'validation';
   $: if (runStatus && runStatus.current_stream_type) {
     if (runStatus.running) {
-      selectedConsoleLogTab = runStatus.current_stream_type;
+      selectedConsoleLogTab = runStatus.current_stream_type as any;
     }
   }
   $: logsToDisplay = (selectedConsoleLogTab === 'repair') 
@@ -135,6 +151,145 @@
       }
     } catch (e) {
       console.error("Failed to fetch context:", e);
+    }
+  }
+
+  let selectedSynthesisConsoleTab: string = 'general';
+  let activeModuleLogText: string = '';
+  let activeModuleLogLoading: boolean = false;
+
+  async function pausePipeline() {
+    try {
+      await apiCall('/api/pipeline/pause');
+      pollStatus();
+    } catch (e) {
+      console.error("Failed to pause pipeline:", e);
+    }
+  }
+
+  async function resumePipeline() {
+    try {
+      await apiCall('/api/pipeline/resume');
+      pollStatus();
+    } catch (e) {
+      console.error("Failed to resume pipeline:", e);
+    }
+  }
+
+  async function abortPipeline() {
+    try {
+      await apiCall('/api/pipeline/abort');
+      step = 'config';
+      pollStatus();
+    } catch (e) {
+      console.error("Failed to abort pipeline:", e);
+    }
+  }
+
+  async function pauseSynthesis() {
+    try {
+      await apiCall('/api/synthesis/pause');
+      fetchSynthesisStatus();
+    } catch (e) {
+      console.error("Failed to pause synthesis:", e);
+    }
+  }
+
+  async function resumeSynthesis() {
+    try {
+      await apiCall('/api/synthesis/resume');
+      fetchSynthesisStatus();
+    } catch (e) {
+      console.error("Failed to resume synthesis:", e);
+    }
+  }
+
+  async function abortSynthesis() {
+    try {
+      await apiCall('/api/synthesis/abort');
+      fetchSynthesisStatus();
+    } catch (e) {
+      console.error("Failed to abort synthesis:", e);
+    }
+  }
+
+  async function selectSynthesisModuleConsole(moduleName: string) {
+    selectedSynthesisConsoleTab = moduleName;
+    activeModuleLogLoading = true;
+    try {
+      const data = await apiCall(`/api/synthesis/module/${moduleName}`);
+      activeModuleLogText = data.log || '';
+    } catch (e) {
+      console.error(e);
+      activeModuleLogText = 'Failed to load log.';
+    } finally {
+      activeModuleLogLoading = false;
+    }
+  }
+
+  async function fetchSynthesisStatus() {
+    try {
+      const data = await apiCall('/api/synthesis/status');
+      if (data) {
+        synthesisStatus = data;
+      }
+    } catch (e) {
+      console.error("Failed to fetch synthesis status:", e);
+    }
+  }
+
+  async function startSynthesis() {
+    try {
+      selectedSynthesisConsoleTab = 'general';
+      synthesisStatus = {
+        ...synthesisStatus,
+        synthesis_running: true,
+        synthesis_status: 'running',
+        synthesis_logs: ["Launching Yosys Synthesis Pipeline..."]
+      };
+      await apiCall('/api/synthesis/run', synthConfig);
+      fetchSynthesisStatus();
+    } catch (e) {
+      console.error("Failed to start synthesis:", e);
+      synthesisStatus = {
+        ...synthesisStatus,
+        synthesis_running: false,
+        synthesis_status: 'failed',
+        synthesis_logs: ["Failed to start synthesis: " + (e.message || e)]
+      };
+    }
+  }
+
+  let autodetectStatus: string = '';
+  async function autodetectFusesoc() {
+    if (!synthConfig.top_module) {
+      autodetectStatus = 'Please enter a Top Module Name first.';
+      setTimeout(() => autodetectStatus = '', 3000);
+      return;
+    }
+    autodetectStatus = 'Detecting...';
+    try {
+      const res = await apiCall('/api/synthesis/autodetect_fusesoc', { top_module: synthConfig.top_module });
+      if (res && res.fusesoc_core_name) {
+        synthConfig.fusesoc_cores_root = res.fusesoc_cores_root || '';
+        synthConfig.fusesoc_core_name = res.fusesoc_core_name;
+        autodetectStatus = 'Detected!';
+      } else {
+        autodetectStatus = 'Failed to detect.';
+      }
+    } catch (e) {
+      autodetectStatus = 'Failed to detect.';
+    }
+    setTimeout(() => autodetectStatus = '', 3000);
+  }
+
+  async function fetchSynthesisModuleDetail(moduleName: string) {
+    try {
+      selectedSynthesisModule = moduleName;
+      const data = await apiCall(`/api/synthesis/module/${moduleName}`);
+      selectedSynthesisDetail = data;
+    } catch (e) {
+      console.error("Failed to fetch synthesis module detail:", e);
     }
   }
 
@@ -422,9 +577,21 @@
         fully_validated: 0,
         partially_validated: 0,
         failed: 0,
-        logs: ["Clearing old workspace and restarting pipeline..."]
+        logs: ["Clearing old workspace and restarting pipeline..."],
+        validation_logs: ["Clearing old workspace and restarting pipeline..."],
+        repair_logs: [],
+        synthesis_logs: []
       };
       modulesList = [];
+      synthesisStatus = {
+        synthesis_running: false,
+        synthesis_status: 'idle',
+        synthesis_logs: [],
+        modules: []
+      };
+      proceedStatus = '';
+      saveConfigStatus = '';
+      configError = '';
 
       await apiCall('/api/run', { clean: true, project_name: projectName });
       
@@ -446,9 +613,21 @@
         fully_validated: 0,
         partially_validated: 0,
         failed: 0,
-        logs: ["Clearing workspace and restarting pipeline..."]
+        logs: ["Clearing workspace and restarting pipeline..."],
+        validation_logs: ["Clearing workspace and restarting pipeline..."],
+        repair_logs: [],
+        synthesis_logs: []
       };
       modulesList = [];
+      synthesisStatus = {
+        synthesis_running: false,
+        synthesis_status: 'idle',
+        synthesis_logs: [],
+        modules: []
+      };
+      proceedStatus = '';
+      saveConfigStatus = '';
+      configError = '';
 
       await apiCall('/api/run', { clean: true, project_name: projectName });
       
@@ -509,6 +688,10 @@
     
     // Check if a run is already active (overrides to 'running' if true)
     pollStatus();
+
+    // Fetch and continuously update synthesis status in the background
+    fetchSynthesisStatus();
+    synthesisStatusInterval = setInterval(fetchSynthesisStatus, 1500);
   });
 
   let isRepairing = false;
@@ -523,14 +706,33 @@
         fully_validated: 0,
         partially_validated: 0,
         failed: 0,
-        logs: ["Launching interactive Failure Repairer..."]
+        logs: ["Launching interactive Failure Repairer..."],
+        validation_logs: [],
+        repair_logs: ["Launching interactive Failure Repairer..."],
+        synthesis_logs: []
       };
       modulesList = [];
-      await apiCall('/api/repair');
+      const res = await apiCall('/api/repair');
+      if (res && res.detail) {
+        runStatus = {
+          ...runStatus,
+          running: false,
+          repair_logs: [res.detail]
+        };
+        step = 'results';
+        selectedConsoleLogTab = 'repair';
+        return;
+      }
       step = 'running';
       pollStatus();
     } catch (e) {
-      configError = 'Failed to launch failure repair.';
+      runStatus = {
+        ...runStatus,
+        running: false,
+        repair_logs: [e.message || e || "API configuration not found. Configure an API key before running AI Repair."]
+      };
+      step = 'results';
+      selectedConsoleLogTab = 'repair';
     } finally {
       isRepairing = false;
     }
@@ -658,6 +860,14 @@
             >
               <span class="icon">🌳</span> Design Context (Phase 0.3)
             </button>
+            <button 
+              class="sidebar-item {activePhase === 'phase-0.4' ? 'active' : ''}" 
+              on:click={() => { activePhase = 'phase-0.4'; fetchSynthesisStatus(); }}
+              disabled={step === 'config'}
+              title={step === 'config' ? 'Complete validation first to unlock' : ''}
+            >
+              <span class="icon">⚙️</span> Shared Synthesis (Phase 0.4)
+            </button>
           </div>
 
           <div class="sidebar-section">
@@ -766,7 +976,7 @@
                     <button class="btn btn-secondary" on:click={triggerFilePicker}>Load Config File</button>
                     <button class="btn btn-secondary" on:click={handleRestoreConfig}>Restore Saved</button>
                     <button class="btn btn-info" on:click={handleSaveConfigOnly}>Save Config</button>
-                    <button class="btn btn-primary" on:click={handleStartRun}>Launch Pipeline</button>
+                    <button class="btn btn-primary" on:click={handleStartRun} disabled={runStatus.running && runStatus.validation_status !== 'paused'}>Launch Pipeline</button>
                     {#if saveConfigStatus}
                       <span class="status-msg">{saveConfigStatus}</span>
                     {/if}
@@ -786,18 +996,28 @@
                       {#if step === 'results'}
                         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                           <button class="btn btn-secondary btn-sm" on:click={() => step = 'config'}>Configure</button>
-                          <button class="btn btn-secondary btn-sm" on:click={handleReRun}>Clean & Re-run</button>
+                          <button class="btn btn-secondary btn-sm" on:click={handleReRun} disabled={runStatus.running && runStatus.validation_status !== 'paused'}>Clean & Re-run</button>
                           {#if runStatus.failed > 0}
-                            <button class="btn btn-warning btn-sm" on:click={handleRepair} disabled={isRepairing}>
+                            <button class="btn btn-warning btn-sm" on:click={handleRepair} disabled={isRepairing || (runStatus.running && runStatus.validation_status !== 'paused')}>
                               {isRepairing ? 'Repairing...' : 'Launch Failure Repair'}
                             </button>
                           {/if}
-                          <button class="btn btn-success btn-sm" on:click={handleProceed} disabled={isProceeding}>
+                          <button class="btn btn-success btn-sm" on:click={handleProceed} disabled={isProceeding || (runStatus.running && runStatus.validation_status !== 'paused')}>
                             {isProceeding ? 'Proceeding...' : 'Proceed to Workers'}
                           </button>
                           {#if proceedStatus}
                             <span style="font-size: 0.85rem; color: var(--success-green); margin-left: 0.5rem;">{proceedStatus}</span>
                           {/if}
+                        </div>
+                      {/if}
+                      {#if step === 'running' || (runStatus.running && runStatus.validation_status !== 'idle')}
+                        <div class="process-controls" style="display: flex; gap: 0.5rem; align-items: center; margin-left: auto;">
+                          {#if runStatus.validation_status === 'paused'}
+                            <button class="btn btn-success btn-sm" on:click={resumePipeline}>Resume</button>
+                          {:else}
+                            <button class="btn btn-warning btn-sm" on:click={pausePipeline}>Pause</button>
+                          {/if}
+                          <button class="btn btn-danger btn-sm" on:click={abortPipeline}>Abort</button>
                         </div>
                       {/if}
                     </div>
@@ -1106,6 +1326,289 @@
                   </div>
                 </div>
               {/if}
+            </section>
+
+          {:else if activePhase === 'phase-0.4'}
+            <!-- Synthesis Orchestrator Panel -->
+            <section class="card glass synthesis-panel">
+              <div class="panel-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1rem;">
+                <div>
+                  <h2 style="margin: 0;">Shared Synthesis Orchestrator (Phase 0.4)</h2>
+                  <p class="subtitle" style="margin: 0.2rem 0 0 0; color: var(--text-secondary); font-size: 0.9rem;">Triggers module-wise netlist slice generation using Yosys and executes AI static analysis on synthesis warnings.</p>
+                </div>
+                <div>
+                  {#if synthesisStatus.synthesis_running}
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                      {#if synthesisStatus.synthesis_status === 'paused'}
+                        <button class="btn btn-success" on:click={resumeSynthesis}>
+                          Resume
+                        </button>
+                      {:else}
+                        <button class="btn btn-warning" on:click={pauseSynthesis} style="background: var(--warning-amber); border-color: var(--warning-amber); color: #fff;">
+                          Pause
+                        </button>
+                      {/if}
+                      <button class="btn btn-danger" on:click={abortSynthesis}>
+                        Abort
+                      </button>
+                    </div>
+                  {:else}
+                    <button class="btn btn-primary" on:click={startSynthesis} disabled={synthesisStatus.synthesis_running && synthesisStatus.synthesis_status !== 'paused'}>
+                      Run Yosys Synthesis
+                    </button>
+                  {/if}
+                </div>
+              </div>
+
+              {#if !synthesisStatus.synthesis_running && synthesisStatus.synthesis_status === 'idle' && (!synthesisStatus.modules || synthesisStatus.modules.length === 0)}
+                <div class="config-panel" style="padding: 1.5rem; background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 1.5rem;">
+                  <h3 style="margin-top: 0;">Synthesis Configuration</h3>
+                  
+                  <div style="margin-bottom: 1rem;">
+                    <div class="form-group">
+                      <label>Top Module Name</label>
+                      <input type="text" bind:value={synthConfig.top_module} placeholder="e.g. chip_earlgrey_asic" />
+                    </div>
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.5rem;">
+                    <div class="form-group">
+                      <label>FuseSoC Cores Root (optional)</label>
+                      <input type="text" bind:value={synthConfig.fusesoc_cores_root} placeholder="e.g. hw/" />
+                    </div>
+                    <div class="form-group">
+                      <label>FuseSoC Core Name (optional)</label>
+                      <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" bind:value={synthConfig.fusesoc_core_name} placeholder="e.g. lowrisc:systems:chip_earlgrey_asic" style="flex: 1;" />
+                        <button class="btn btn-secondary btn-sm" on:click={autodetectFusesoc} style="white-space: nowrap;">Auto-detect</button>
+                      </div>
+                    </div>
+                  </div>
+                  {#if autodetectStatus}
+                    <div style="color: var(--accent-color); font-size: 0.85rem; margin-bottom: 1rem; text-align: right;">{autodetectStatus}</div>
+                  {/if}
+
+                  <div style="display: flex; gap: 2rem; align-items: center; margin-top: 1rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                      <input type="checkbox" bind:checked={synthConfig.run_slang_elab_check} />
+                      Run Slang Elaboration Check
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                      <input type="checkbox" bind:checked={synthConfig.auto_generate_stubs} />
+                      Auto-Generate Stubs on Error
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                      <input type="checkbox" bind:checked={synthConfig.escalate_to_ai_on_failure} />
+                      Escalate to AI on Failure
+                    </label>
+                  </div>
+                </div>
+              {:else}
+                <div class="context-content-grid" style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 1.5rem; min-height: 350px; margin-bottom: 1.5rem;">
+                  <!-- Left side: Module list with status -->
+                  <div class="context-main-view scrollable" style="overflow-y: auto; padding-right: 0.5rem; border-right: 1px solid rgba(255,255,255,0.06); max-height: 55vh;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0;">
+                      <h3 style="margin: 0;">Approved Modules Status</h3>
+                      <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary);">
+                        <input type="checkbox" bind:checked={showInternalModules} />
+                        Show Internal Modules
+                      </label>
+                    </div>
+                    <div class="table-container" style="margin-top: 1rem;">
+                      <table class="modules-table" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                          <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <th style="padding: 0.5rem;">Module Name</th>
+                            <th style="padding: 0.5rem;">Status</th>
+                            <th style="padding: 0.5rem;">Warnings</th>
+                            <th style="padding: 0.5rem;">Errors</th>
+                            <th style="padding: 0.5rem;">AI Risk</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {#each synthesisStatus.modules.filter(m => showInternalModules || !m.name.includes('$')) as mod}
+                            <tr 
+                              class="clickable-row {selectedSynthesisModule === mod.name ? 'selected-row' : ''}" 
+                              role="button" 
+                              tabindex="0" 
+                              on:click={() => fetchSynthesisModuleDetail(mod.name)} 
+                              on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && fetchSynthesisModuleDetail(mod.name)}
+                              style="cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.2s;"
+                            >
+                              <td style="padding: 0.6rem 0.5rem;"><strong>{mod.name}</strong></td>
+                              <td style="padding: 0.6rem 0.5rem;">
+                                <span class="badge status-{mod.status.toLowerCase()}">
+                                  {mod.status}
+                                </span>
+                              </td>
+                              <td style="padding: 0.6rem 0.5rem;">{mod.warning_count}</td>
+                              <td style="padding: 0.6rem 0.5rem;">{mod.error_count}</td>
+                              <td style="padding: 0.6rem 0.5rem;">
+                                <span class="badge risk-{mod.risk_level.toLowerCase()}">
+                                  {mod.risk_level}
+                                </span>
+                              </td>
+                            </tr>
+                          {/each}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- Right side: Synthesis Log and AI security findings detail panel -->
+                  <div class="context-detail-panel card glass scrollable" style="overflow-y: auto; padding: 1rem; background: rgba(0,0,0,0.15); border-radius: 8px; max-height: 55vh;">
+                    {#if selectedSynthesisModule && selectedSynthesisDetail}
+                      <div class="detail-header-row" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 0.5rem;">
+                        <h3 style="margin: 0;">Synthesis Report: <code>{selectedSynthesisModule}</code></h3>
+                        <button class="close-btn" on:click={() => { selectedSynthesisModule = ''; selectedSynthesisDetail = null; }} style="background: none; border: none; color: var(--text-secondary); font-size: 1.5rem; cursor: pointer;">&times;</button>
+                      </div>
+
+                      <!-- Netlist Metadata -->
+                      {#if selectedSynthesisDetail.netlist_metadata && selectedSynthesisDetail.netlist_metadata.cell_count !== undefined}
+                        <div class="profile-field" style="margin-bottom: 1.5rem;">
+                          <span class="profile-label" style="display: block; font-weight: bold; margin-bottom: 0.5rem; color: var(--accent-color);">Synthesized Netlist Statistics:</span>
+                          <div class="stats-grid">
+                            <div class="stat-card">
+                              <span class="stat-num">{selectedSynthesisDetail.netlist_metadata.port_count}</span>
+                              <span class="stat-label">Ports</span>
+                            </div>
+                            <div class="stat-card">
+                              <span class="stat-num">{selectedSynthesisDetail.netlist_metadata.cell_count}</span>
+                              <span class="stat-label">Total Cells</span>
+                            </div>
+                          </div>
+                          {#if Object.keys(selectedSynthesisDetail.netlist_metadata.cells_summary).length > 0}
+                            <h5 style="margin: 0.8rem 0 0.4rem 0;">Cell Library Allocation</h5>
+                            <ul class="secrets-bullet-list" style="margin: 0; padding-left: 1.2rem; font-size: 0.9rem;">
+                              {#each Object.entries(selectedSynthesisDetail.netlist_metadata.cells_summary) as [cellType, count]}
+                                <li style="margin-bottom: 0.2rem;"><code>{cellType}</code>: {count} instances</li>
+                              {/each}
+                            </ul>
+                          {/if}
+                        </div>
+                      {/if}
+
+                      <!-- AI Security Findings -->
+                      <div class="profile-field" style="margin-bottom: 1.5rem;">
+                        <span class="profile-label" style="display: block; font-weight: bold; margin-bottom: 0.5rem; color: var(--accent-color);">AI Static Security Review:</span>
+                        {#if selectedSynthesisDetail.ai_interpretation}
+                          <div class="risk-summary" style="margin-top: 0.5rem; padding: 0.5rem; border-radius: 4px; background: rgba(255,255,255,0.03); border-left: 4px solid var(--warning-amber);">
+                            <strong>Overall Risk Boundary Level: </strong>
+                            <span class="badge risk-{selectedSynthesisDetail.ai_interpretation.risk_level?.toLowerCase()}">{selectedSynthesisDetail.ai_interpretation.risk_level || 'LOW'}</span>
+                          </div>
+                          
+                          {#if selectedSynthesisDetail.ai_interpretation.security_warnings && selectedSynthesisDetail.ai_interpretation.security_warnings.length > 0}
+                            <div class="findings-list" style="margin-top: 1rem;">
+                              {#each selectedSynthesisDetail.ai_interpretation.security_warnings as warning}
+                                <div class="finding-card card glass" style="padding: 0.8rem; margin-bottom: 0.8rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.05); border-radius: 6px;">
+                                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                                    <strong style="color: #f0f3f6;">⚠️ {warning.finding}</strong>
+                                    <span class="badge risk-{warning.severity?.toLowerCase()}">{warning.severity}</span>
+                                  </div>
+                                  <p style="margin: 0 0 0.4rem 0; font-size: 0.9rem; color: #8b949e;">{warning.explanation}</p>
+                                  <p style="margin: 0; font-size: 0.9rem; color: var(--accent-color, #58a6ff);">💡 <strong>Recommendation:</strong> {warning.recommendation}</p>
+                                </div>
+                              {/each}
+                            </div>
+                          {:else}
+                            <p class="empty-text" style="color: var(--text-secondary); font-style: italic;">No security findings flagged by static log review.</p>
+                          {/if}
+                        {:else}
+                          <p class="empty-text" style="color: var(--text-secondary); font-style: italic;">No AI security assessment available yet.</p>
+                        {/if}
+                      </div>
+                      <!-- Worker Payload Preview -->
+                      {#if selectedSynthesisDetail.worker_payload_preview}
+                        <div class="profile-field" style="margin-bottom: 1.5rem;">
+                          <span class="profile-label" style="display: block; font-weight: bold; margin-bottom: 0.5rem; color: var(--accent-color);">Worker AI Payload Preview:</span>
+                          <div class="console-box" style="font-family: monospace; font-size: 0.85rem; max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 6px; color: #e5e7eb; border: 1px solid rgba(255,255,255,0.08);">
+                            <pre style="margin: 0; white-space: pre-wrap;"><code>{JSON.stringify(selectedSynthesisDetail.worker_payload_preview, null, 2)}</code></pre>
+                          </div>
+                        </div>
+                      {/if}
+
+                      <!-- Compiler logs -->
+                      <div class="profile-field" style="margin-bottom: 1.5rem;">
+                        <span class="profile-label" style="display: block; font-weight: bold; margin-bottom: 0.5rem; color: var(--accent-color);">Yosys Compiler Stdout/Stderr:</span>
+                        <div class="console-box" style="font-family: monospace; font-size: 0.8rem; max-height: 250px; overflow-y: auto; background: #07090e; padding: 0.5rem; border-radius: 4px; color: #a5b4fc;">
+                          {#each (selectedSynthesisDetail.log || '').split('\n') as line}
+                            <div class="console-line" style="margin-bottom: 0.1rem; line-height: 1.3;">{line}</div>
+                          {/each}
+                          {#if !selectedSynthesisDetail.log}
+                            <div class="console-line empty-log" style="color: var(--text-secondary); font-style: italic;">No compilation output recorded.</div>
+                          {/if}
+                        </div>
+                      </div>
+
+                    {:else}
+                      <div class="empty-detail-state" style="text-align: center; padding: 4rem 1rem; color: var(--text-secondary);">
+                        <span class="icon" style="font-size: 2.5rem; display: block; margin-bottom: 1rem;">📋</span>
+                        <p>Select a synthesized module from the list to inspect its netlist cell stats, AI compiler warnings review, and raw execution logs.</p>
+                      </div>
+                    {/if}
+                  </div>
+                </div>
+              {/if}
+
+                <!-- Sub-tabbed Console Streams for Synthesis -->
+                <div class="synthesis-console-section" style="border-top: 1px solid rgba(255,255,255,0.06); padding-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                  <div class="console-header-row" style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="margin: 0; font-size: 1rem; color: #f0f3f6;">
+                      Synthesis Console Streams
+                      {#if synthesisStatus.synthesis_running && synthesisStatus.synthesis_status === 'paused'}
+                        <span class="badge status-paused" style="margin-left: 0.5rem; font-size: 0.75rem;">PAUSED</span>
+                      {:else if synthesisStatus.synthesis_running}
+                        <span class="badge status-running" style="margin-left: 0.5rem; font-size: 0.75rem;">RUNNING</span>
+                      {:else if synthesisStatus.synthesis_status === 'completed'}
+                        <span class="badge status-completed" style="margin-left: 0.5rem; font-size: 0.75rem;">COMPLETED</span>
+                      {:else if synthesisStatus.synthesis_status === 'failed'}
+                        <span class="badge status-failed" style="margin-left: 0.5rem; font-size: 0.75rem;">FAILED</span>
+                      {:else}
+                        <span class="badge status-idle" style="margin-left: 0.5rem; font-size: 0.75rem;">IDLE</span>
+                      {/if}
+                    </h3>
+                    <div class="console-tabs" style="display: flex; gap: 0.25rem; overflow-x: auto; max-width: 70%; padding-bottom: 0.2rem;">
+                      <button 
+                        class="console-tab-btn {selectedSynthesisConsoleTab === 'general' ? 'active' : ''}" 
+                        on:click={() => selectedSynthesisConsoleTab = 'general'}
+                        style="padding: 0.25rem 0.6rem; font-size: 0.8rem; border-radius: 4px;"
+                      >
+                        General Synthesis Log
+                      </button>
+                      {#each synthesisStatus.modules as mod}
+                        {#if mod.status !== 'UNVALIDATED'}
+                          <button 
+                            class="console-tab-btn {selectedSynthesisConsoleTab === mod.name ? 'active' : ''}" 
+                            on:click={() => selectSynthesisModuleConsole(mod.name)}
+                            style="padding: 0.25rem 0.6rem; font-size: 0.8rem; border-radius: 4px;"
+                          >
+                            {mod.name}
+                          </button>
+                        {/if}
+                      {/each}
+                    </div>
+                  </div>
+                  <div class="console-box" style="font-family: monospace; font-size: 0.85rem; height: 200px; overflow-y: auto; background: #07090e; padding: 0.5rem; border-radius: 6px; color: #a5b4fc; border: 1px solid rgba(255,255,255,0.08);">
+                    {#if selectedSynthesisConsoleTab === 'general'}
+                      {#each (synthesisStatus.synthesis_logs || []) as line}
+                        <div class="console-line" style="margin-bottom: 0.1rem; line-height: 1.3;">{line}</div>
+                      {/each}
+                      {#if !(synthesisStatus.synthesis_logs && synthesisStatus.synthesis_logs.length)}
+                        <div class="console-line empty-log" style="color: var(--text-secondary); font-style: italic;">No synthesis logs recorded.</div>
+                      {/if}
+                    {:else}
+                      {#if activeModuleLogLoading}
+                        <div class="console-line" style="margin-bottom: 0.1rem; line-height: 1.3;"><span class="spinner">⏳</span> Loading log for {selectedSynthesisConsoleTab}...</div>
+                      {:else}
+                        {#each (activeModuleLogText || '').split('\n') as line}
+                          <div class="console-line" style="margin-bottom: 0.1rem; line-height: 1.3;">{line}</div>
+                        {/each}
+                        {#if !activeModuleLogText}
+                          <div class="console-line empty-log" style="color: var(--text-secondary); font-style: italic;">No compilation output recorded for {selectedSynthesisConsoleTab}.</div>
+                        {/if}
+                      {/if}
+                    {/if}
+                  </div>
             </section>
 
           {:else}
@@ -1622,6 +2125,13 @@
   .badge.status-partial { background: rgba(255, 171, 0, 0.15); color: var(--warning-amber); }
   .badge.status-failed { background: rgba(255, 61, 0, 0.15); color: var(--danger-red); }
   .badge.status-unvalidated { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary); }
+  .badge.status-completed { background: rgba(0, 230, 118, 0.15); color: var(--success-green); }
+  .badge.status-running { background: rgba(33, 150, 243, 0.15); color: #2196f3; }
+  .badge.status-pending { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary); }
+  .badge.risk-low { background: rgba(0, 230, 118, 0.15); color: var(--success-green); }
+  .badge.risk-medium { background: rgba(255, 171, 0, 0.15); color: var(--warning-amber); }
+  .badge.risk-high { background: rgba(255, 61, 0, 0.15); color: var(--danger-red); }
+  .badge.risk-unknown { background: rgba(255, 255, 255, 0.08); color: var(--text-secondary); }
 
   .stats-header {
     display: flex;
@@ -2065,7 +2575,7 @@
     border: 1px solid var(--border-color);
     border-radius: 12px;
     padding: 1.25rem;
-    height: 580px;
+    height: 100%;
   }
 
   .context-detail-panel {
@@ -2078,7 +2588,7 @@
     flex-direction: column;
     gap: 1.25rem;
     overflow-y: auto;
-    height: 580px;
+    height: 100%;
   }
 
   .tree-nodes-list {
@@ -2257,5 +2767,36 @@
   @keyframes pulse {
     0%, 100% { opacity: 0.6; transform: scale(1); }
     50% { opacity: 1; transform: scale(1.05); }
+  }
+
+  /* Stats grid for Synthesis */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin-top: 0.5rem;
+  }
+  .stat-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .stat-num {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--accent-color, #58a6ff);
+  }
+  .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 0.2rem;
+  }
+  .selected-row {
+    background: rgba(88, 166, 255, 0.1) !important;
   }
 </style>

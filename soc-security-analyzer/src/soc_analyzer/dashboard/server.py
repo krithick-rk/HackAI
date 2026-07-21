@@ -557,6 +557,140 @@ def api_context():
     return {}
 
 # Serve Svelte compiled files if present, otherwise serve a build hint page
+import threading
+
+synthesis_state = {
+    "is_running": False,
+    "status": "idle",
+    "logs": []
+}
+
+@app.post("/api/synthesis/run")
+def api_synthesis_trigger(config: dict):
+    from soc_analyzer.phase0.synthesis_orchestrator import SharedSynthesisConfig, run_shared_synthesis
+    
+    if synthesis_state["is_running"]:
+        return {"status": "already_running"}
+        
+    synthesis_state["is_running"] = True
+    synthesis_state["status"] = "running"
+    synthesis_state["logs"] = []
+    
+    def run_synthesis_task():
+        c = SharedSynthesisConfig()
+        c.top_module = config.get("top_module", "chip_earlgrey_asic")
+        c.auto_generate_stubs = config.get("auto_generate_stubs", True)
+        
+        try:
+            run_shared_synthesis(c)
+            synthesis_state["status"] = "completed"
+        except Exception as e:
+            synthesis_state["status"] = "failed"
+            synthesis_state["logs"].append(str(e))
+        finally:
+            synthesis_state["is_running"] = False
+            
+    threading.Thread(target=run_synthesis_task).start()
+    return {"status": "started"}
+
+@app.post("/api/synthesis/status")
+def api_synthesis_status():
+    import json
+    import os
+    
+    workspace_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "workspace")
+    netlist_dir = os.path.join(workspace_dir, "opentitan_artifacts", "netlist")
+    manifest_path = os.path.join(netlist_dir, "manifest.json")
+    annotations_path = os.path.join(netlist_dir, "annotations.json")
+    log_path = os.path.join(workspace_dir, "opentitan_artifacts", "logs", "full_soc_synthesis.log")
+    
+    modules = []
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r") as f:
+            slices = json.load(f).get("slices", [])
+            
+        annotations = {}
+        if os.path.exists(annotations_path):
+            with open(annotations_path, "r") as f:
+                annotations = json.load(f).get("module_annotations", {})
+                
+        for s in slices:
+            inst = s["instance"]
+            ann = annotations.get(inst, {})
+            
+            modules.append({
+                "name": inst,
+                "status": "COMPLETED",
+                "warning_count": ann.get("warnings", 0),
+                "error_count": ann.get("errors", 0),
+                "risk_level": ann.get("risk_level", "LOW")
+            })
+            
+    logs = []
+    if os.path.exists(log_path):
+        with open(log_path, "r") as f:
+            logs = f.read().splitlines()
+            
+    return {
+        "synthesis_running": synthesis_state["is_running"],
+        "synthesis_status": synthesis_state["status"],
+        "modules": modules,
+        "synthesis_logs": logs[-1000:]
+    }
+
+@app.post("/api/synthesis/module/{mod_name}")
+def api_synthesis_module(mod_name: str):
+    import json
+    import os
+    
+    workspace_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "workspace")
+    netlist_dir = os.path.join(workspace_dir, "opentitan_artifacts", "netlist")
+    
+    slice_path = os.path.join(netlist_dir, f"{mod_name}.json")
+    annotations_path = os.path.join(netlist_dir, "annotations.json")
+    
+    netlist_meta = {"port_count": 0, "cell_count": 0, "cells_summary": {}}
+    findings = {"risk_level": "LOW", "diagnostics": []}
+    payload_preview = {}
+    
+    if os.path.exists(slice_path):
+        with open(slice_path, "r") as f:
+            data = json.load(f)
+            stats = data.get("synthesis_stats", {})
+            netlist_meta = {
+                "port_count": len(data.get("ports", {})),
+                "cell_count": stats.get("total_cells", 0),
+                "cells_summary": stats.get("cell_type_counts", {})
+            }
+            
+            source_cells = data.get("source_cells", {})
+            sample_cells = {k: source_cells[k] for k in list(source_cells.keys())[:2]}
+            payload_preview = {
+                "module": mod_name,
+                "ports": "Inherited from global wiring" if mod_name not in ["chip_earlgrey_asic"] and "$" not in mod_name else "Explicit",
+                "total_cells_extracted": stats.get("total_cells", 0),
+                "sample_cells": sample_cells
+            }
+            
+    if os.path.exists(annotations_path):
+        with open(annotations_path, "r") as f:
+            ann = json.load(f).get("module_annotations", {}).get(mod_name, {})
+            findings["risk_level"] = ann.get("risk_level", "LOW")
+            if "diagnostics" in ann:
+                findings["diagnostics"] = ann["diagnostics"]
+            else:
+                if findings["risk_level"] == "LOW":
+                    findings["diagnostics"] = ["Standard Yosys Synthesis Completed. No custom security flags raised by static compiler log inspection. Run static/dynamic worker agents for deeper auditing."]
+                else:
+                    findings["diagnostics"] = ["Review Yosys standard output for warnings regarding potential truncation, implicit sizing, or disconnected nets."]
+                    
+    return {
+        "module": mod_name,
+        "netlist_meta": netlist_meta,
+        "security_findings": findings,
+        "worker_payload_preview": payload_preview
+    }
+
 gui_dist = os.path.abspath("gui/dist")
 if os.path.exists(gui_dist):
     app.mount("/", StaticFiles(directory=gui_dist, html=True), name="gui")
