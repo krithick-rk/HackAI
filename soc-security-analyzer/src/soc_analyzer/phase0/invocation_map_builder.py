@@ -79,6 +79,15 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
         _, child_files = get_transitive_dependencies(mod_name, modules_map)
         child_files_clean = {f for f in child_files if f != defining_file}
         
+        # Check for instantiated modules not in modules_map and resolve from project repository
+        from src.soc_analyzer.phase0.tool_validator import find_real_project_file
+        instantiated_names = mdata.get("instantiates", [])
+        for inst in instantiated_names:
+            if inst not in modules_map:
+                real_inst_file = find_real_project_file(inst, "/home/hackdac/opentitan")
+                if real_inst_file and os.path.exists(real_inst_file) and real_inst_file != defining_file:
+                    child_files_clean.add(real_inst_file)
+        
         # 2. Transitive include files across target module and its companions
         all_involved_files = child_files_clean | {defining_file}
         all_includes = set()
@@ -103,7 +112,9 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
                 if pkg not in visited_pkgs:
                     visited_pkgs.add(pkg)
                     pkg_file = packages_map.get(pkg)
-                    if pkg_file:
+                    if not pkg_file:
+                        pkg_file = find_real_project_file(pkg, "/home/hackdac/opentitan")
+                    if pkg_file and os.path.exists(pkg_file):
                         all_packages_to_include.add(os.path.abspath(pkg_file))
                         add_packages_for_file(pkg_file)
                         

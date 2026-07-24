@@ -30,7 +30,7 @@ class SynthesisConfig:
     yosys_path: str = ""
     slang_path: str = ""
     fusesoc_path: str = ""
-    yosys_slang_plugin: str = ""   # path to slang.so Yosys plugin, optional
+    yosys_slang_plugin: str = "/home/hackdac/hwsec-tools/yosys-slang/build/slang.so"   # path to slang.so Yosys plugin, optional
 
     # Behaviour flags
     run_slang_elab_check: bool = True
@@ -43,6 +43,7 @@ def _emit_event(event_type: str, data: dict, output_dir: str = None):
     line = json.dumps(record)
     print(line, flush=True)
     if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
         with open(os.path.join(output_dir, "phase0_events.jsonl"), "a") as f:
             f.write(line + "\n")
 
@@ -678,6 +679,10 @@ def preprocess_sv_for_yosys(content: str) -> str:
     
     # 5. Simplify default struct initializers: '{default: '0} -> '0
     content = re.sub(r"'\s*\{\s*default\s*:\s*([^}]+)\}", r"\1", content)
+    content = re.sub(r"parameter pmp_cfg_t PmpCfgRst.*?};", "", content, flags=re.DOTALL)
+    content = re.sub(r"parameter logic \[[^\]]+\] PmpAddrRst.*?};", "", content, flags=re.DOTALL)
+    content = re.sub(r"parameter pmp_mseccfg_t PmpMseccfgRst.*?;", "", content, flags=re.DOTALL)
+
     
     # 6. Rewrite functions with multidimensional returns or unpacked array args
     content = content.replace(
@@ -1438,6 +1443,7 @@ def auto_generate_stubs(yosys_errors: list, config: SynthesisConfig, current_rtl
     p2 = re.compile(r"ERROR: Unknown cell type: (\w+)")
     p3 = re.compile(r"([^:]+\.sv):\d+: ERROR: Unsupported expression")
     p4 = re.compile(r"([^:]+\.sv):\d+: ERROR: error in generate")
+    p5 = re.compile(r"([^:]+\.sv):\d+: ERROR: syntax error")
     p5 = re.compile(r"ERROR: Design elaboration failed")
     
     file_errors = {}
@@ -1470,6 +1476,12 @@ def auto_generate_stubs(yosys_errors: list, config: SynthesisConfig, current_rtl
         if m4:
             f = m4.group(1)
             file_errors.setdefault(f, set()).add("error in generate")
+            continue
+
+        m5 = p5.search(err)
+        if m5:
+            f = m5.group(1)
+            file_errors.setdefault(f, set()).add("syntax error")
             continue
 
     if escalate_now:
@@ -1589,6 +1601,109 @@ def auto_generate_stubs(yosys_errors: list, config: SynthesisConfig, current_rtl
 
     return updated_rtl_files, stubs_generated
 
+def inline_prim_util(content: str) -> str:
+    while True:
+        idx = content.find("prim_util_pkg::vbits")
+        if idx == -1: break
+        start_paren = content.find("(", idx)
+        if start_paren == -1: break
+        paren_count = 1
+        scan_idx = start_paren + 1
+        while paren_count > 0 and scan_idx < len(content):
+            char = content[scan_idx]
+            if char == "(": paren_count += 1
+            elif char == ")": paren_count -= 1
+            scan_idx += 1
+        if paren_count == 0:
+            expr = content[start_paren+1 : scan_idx-1].strip()
+            replacement = f"(({expr}) == 1 ? 1 : $clog2({expr}))"
+            content = content[:idx] + replacement + content[scan_idx:]
+        else: break
+            
+    while True:
+        idx = content.find("prim_util_pkg::ceil_div")
+        if idx == -1: break
+        start_paren = content.find("(", idx)
+        if start_paren == -1: break
+        paren_count = 1
+        scan_idx = start_paren + 1
+        while paren_count > 0 and scan_idx < len(content):
+            char = content[scan_idx]
+            if char == "(": paren_count += 1
+            elif char == ")": paren_count -= 1
+            scan_idx += 1
+        if paren_count == 0:
+            args_str = content[start_paren+1 : scan_idx-1].strip()
+            level = 0
+            comma_idx = -1
+            for i, c in enumerate(args_str):
+                if c == "(": level += 1
+                elif c == ")": level -= 1
+                elif c == "," and level == 0:
+                    comma_idx = i
+                    break
+            if comma_idx != -1:
+                arg1 = args_str[:comma_idx].strip()
+                arg2 = args_str[comma_idx+1:].strip()
+                replacement = f"((({arg1}) + ({arg2}) - 1) / ({arg2}))"
+                content = content[:idx] + replacement + content[scan_idx:]
+            else: break
+        else: break
+    return content
+
+def preprocess_sv_for_yosys(content: str) -> str:
+    content = inline_prim_util(content)
+    def repl_inside(match):
+        val = match.group(1).strip()
+        elems_str = match.group(2)
+        elems = [e.strip() for e in elems_str.split(",")]
+        return "(" + " || ".join(f"{val} == {e}" for e in elems) + ")"
+    content = re.sub(r"(\w+)\s+inside\s*\{\s*([^}]+)\s*\}", repl_inside, content)
+    
+    lines = content.splitlines()
+    new_lines = []
+    current_func = None
+    func_start_rx = re.compile(r"\bfunction\s+(?:automatic\s+)?(?:[\w\s\[\]:]+)?\b(\w+)\s*(?:\(|;)")
+    func_end_rx = re.compile(r"\bendfunction\b")
+    for line in lines:
+        m_start = func_start_rx.search(line)
+        if m_start: current_func = m_start.group(1)
+        if current_func and "return " in line:
+            indent = line[:line.find("return")]
+            expr = line[line.find("return") + 7:].strip()
+            line = f"{indent}{current_func} = {expr}"
+        if func_end_rx.search(line): current_func = None
+        new_lines.append(line)
+        
+    content = "\n".join(new_lines)
+    content = re.sub(r"\bendfunction\s*:\s*\w+", "endfunction", content)
+    content = re.sub(r"\bendtask\s*:\s*\w+", "endtask", content)
+    content = re.sub(r"\bendpackage\s*:\s*\w+", "endpackage", content)
+    
+    def repl_struct(match):
+        inner = match.group(1)
+        inner_cleaned = re.sub(r"\b\w+\s*:(?!:)\s*", "", inner)
+        return "'{" + inner_cleaned + "}"
+    content = re.sub(r"'\s*\{([^}]+)\}", repl_struct, content)
+    
+    def repl_param_array(match):
+        kw, msb, lsb, name, size = match.group(1), match.group(2), match.group(3), match.group(4), match.group(5).strip()
+        w_val = int(msb) - int(lsb) + 1 if msb else 1
+        w_expr = str(w_val) if msb else "1"
+        try:
+            new_dim = f"[{int(size) * w_val}-1:0]"
+        except:
+            new_dim = f"[({size}) * {w_expr}-1:0]"
+        return f"{kw} logic {new_dim} {name} = {{"
+    content = re.sub(r"\b(parameter|localparam)\s+logic\s*(?:\[\s*(\d+)\s*:\s*(\d+)\s*\])?\s*(\w+)\s*\[([^\]]+)\]\s*=\s*'\s*\{", repl_param_array, content)
+    content = re.sub(r"'\s*\{\s*default\s*:\s*([^}]+)\}", r"\1", content)
+    content = re.sub(r"parameter pmp_cfg_t PmpCfgRst.*?};", "", content, flags=re.DOTALL)
+    content = re.sub(r"parameter logic \[[^\]]+\] PmpAddrRst.*?};", "", content, flags=re.DOTALL)
+    content = re.sub(r"parameter pmp_mseccfg_t PmpMseccfgRst.*?;", "", content, flags=re.DOTALL)
+
+    return content
+
+
 def run_shared_synthesis(config: SynthesisConfig) -> dict:
     t0 = time.time()
     
@@ -1657,8 +1772,7 @@ def run_shared_synthesis(config: SynthesisConfig) -> dict:
         if attempt > 0:
             _emit_event("YOSYS_RETRY", {"attempt": attempt, "max": config.max_stub_retries}, config.output_dir)
             
-        _emit_event("YOSYS_SYNTHESIS_START", {"top": config.top_module}, config.output_dir)
-        
+        _emit_event("YOSYS_SYNTHESIS_START", {"top": config.top_module}, config.output_dir)    
         ys_path = os.path.join(config.output_dir, "synth.ys")
         ys_content = ""
         if config.yosys_slang_plugin and os.path.exists(config.yosys_slang_plugin):

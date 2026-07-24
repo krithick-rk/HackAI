@@ -1,31 +1,27 @@
 <script lang="ts">
   import { onMount, afterUpdate } from 'svelte';
-  import FolderTreeNode from './FolderTreeNode.svelte';
 
-  // Types
-  interface FolderNode {
+  // Types & Data Models
+  interface IPModule {
     name: string;
-    path: string;
-    children: FolderNode[];
-    isSuggestedExclusion: boolean;
+    folder: string;
+    excluded_subfolders: string[];
+    subfolders: string[];
+    estimated_tokens: number | null;
+    file_count: number | null;
+    is_inspecting: boolean;
+    expanded_subfolders?: boolean;
   }
+
   interface ProjectConfig {
     project_name: string;
     design_dir: string;
     output_dir: string;
-    exclude_patterns: string[];
-    active_modules: string[];
-  }
-
-  interface PreScanResult {
-    folders: string[];
-    suggested_exclusions: string[];
-    duplicates: Array<{
-      module: string;
-      paths: string[];
+    modules: Array<{
+      name: string;
+      folder: string;
+      excluded_subfolders: string[];
     }>;
-    saved_exclusions?: string[] | null;
-    saved_duplicates?: Record<string, string> | null;
   }
 
   interface ModuleStatus {
@@ -45,23 +41,35 @@
     partially_validated: number;
     failed: number;
     logs: string[];
+    validation_logs?: string[];
+    repair_logs?: string[];
+    current_stream_type?: string;
+    validation_status?: string;
+    modules?: ModuleStatus[];
   }
 
   // App State
-  let step: 'setup' | 'config' | 'running' | 'results' = 'setup';
+  let step: 'setup' | 'running' | 'results' = 'setup';
   let designDir: string = '/home/hackdac/opentitan';
   let projectName: string = 'opentitan';
   let configError: string = '';
   
-  let preScanData: PreScanResult = {
-    folders: [],
-    suggested_exclusions: [],
-    duplicates: []
-  };
+  // IP Module Registry State
+  let ipModules: IPModule[] = [];
+  let showAddForm: boolean = false;
+  let editingIndex: number | null = null;
+  let formModuleName: string = '';
+  let formModuleFolder: string = '';
+  let configLoadedNotice: string = '';
 
-  let excludedFolders: Set<string> = new Set();
-  let resolvedDuplicates: Record<string, string> = {}; // module -> selected path
-  let activeProjectConfig: ProjectConfig | null = null;
+  // Folder Browser Overlay State
+  let showFolderBrowser: boolean = false;
+  let browsePath: string = '';
+  let browseSubdirs: string[] = [];
+  let browseParent: string = '';
+  let browseLoading: boolean = false;
+
+  const AUTO_EXCLUDE_PATTERNS = ['dv', 'tb', 'formal', 'pre_dv', 'test', 'vip', 'sim', 'fpv', 'lint', 'cdc', 'rdc'];
   
   let runStatus: RunStatus = {
     running: false,
@@ -79,15 +87,20 @@
   let statusFilter: string = 'ALL';
   let showLaunchModal: boolean = false;
   let selectedModuleForDetail: ModuleStatus | null = null;
+  let copyNotice: string = '';
 
-  let folderTree: FolderNode[] = [];
-  let expandedNodes: Set<string> = new Set();
-  let hideUnselected: boolean = false;
-  let initialExclusions: Set<string> = new Set();
-  let initialDuplicates: Record<string, string> = {};
+  function copyToClipboard(text: string) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      copyNotice = 'Copied to clipboard!';
+      setTimeout(() => { copyNotice = ''; }, 2500);
+    }).catch(err => {
+      console.error('Clipboard copy failed:', err);
+    });
+  }
 
   // Phase navigation and Phase 0.3 Context Viewer state
-  let activePhase: 'phase-0.1-0.2' | 'phase-0.3' | 'phase-0.4' | 'phase-1' | 'phase-2' | 'phase-3' = 'phase-0.1-0.2';
+  let activePhase: 'phase-0.1-0.2' | 'phase-0.3' | 'phase-0.4' | 'phase-0.5' | 'phase-1' | 'phase-2' | 'phase-3' = 'phase-0.1-0.2';
   let contextData: any = null;
   let selectedContextModule: string = '';
   let contextSubTab: 'hierarchy' | 'secrets' | 'trust' = 'hierarchy';
@@ -98,6 +111,11 @@
   let selectedSynthesisDetail: any = null;
   let synthesisStatusInterval: any = null;
   let showInternalModules: boolean = false;
+  
+  // Phase 0.5: Fuzzing Candidates state
+  let fuzzingState = { status: 'idle', is_running: false, error: null };
+  let fuzzingCandidates: any[] = [];
+  let fuzzingStatusInterval: any = null;
 
   let synthConfig = {
     top_module: 'chip_earlgrey_asic',
@@ -119,9 +137,245 @@
     ? (runStatus.repair_logs || []) 
     : (runStatus.validation_logs || runStatus.logs || []);
 
+  $: totalTokens = ipModules.reduce((sum, m) => sum + (m.estimated_tokens || 0), 0);
+  $: totalTokensClass = totalTokens < 200000 ? 'tokens-safe' : (totalTokens <= 500000 ? 'tokens-warn' : 'tokens-danger');
+
+  // API Call helper
+  async function apiCall(endpoint: string, payload?: any, method: string = 'POST') {
+    try {
+      const options: RequestInit = {
+        method,
+        headers: { 'Content-Type': 'application/json' }
+      };
+      if (payload && method !== 'GET') {
+        options.body = JSON.stringify(payload);
+      }
+      const response = await fetch(endpoint, options);
+      return await response.json();
+    } catch (e) {
+      console.error(e);
+      throw e;
+    }
+  }
+
+  // Registry Inspection & Management
+  async function inspectModule(index: number, forceInitialCheck: boolean = false) {
+    if (index < 0 || index >= ipModules.length) return;
+    ipModules[index].is_inspecting = true;
+    ipModules = [...ipModules];
+
+    try {
+      const res = await apiCall('/api/module/inspect', {
+        folder: ipModules[index].folder,
+        excluded_subfolders: ipModules[index].excluded_subfolders || []
+      });
+      ipModules[index].subfolders = res.subfolders || [];
+
+      if (forceInitialCheck || (ipModules[index].excluded_subfolders.length === 0 && res.subfolders.length > 0)) {
+        const autoExcl = (res.subfolders || []).filter((sf: string) => 
+          sf.toLowerCase() !== 'rtl'
+        );
+        if (autoExcl.length > 0) {
+          ipModules[index].excluded_subfolders = autoExcl;
+          const res2 = await apiCall('/api/module/inspect', {
+            folder: ipModules[index].folder,
+            excluded_subfolders: autoExcl
+          });
+          ipModules[index].file_count = res2.file_count;
+          ipModules[index].estimated_tokens = res2.estimated_tokens;
+          ipModules[index].is_inspecting = false;
+          ipModules = [...ipModules];
+          saveRegistryConfig();
+          return;
+        }
+      }
+
+      ipModules[index].file_count = res.file_count;
+      ipModules[index].estimated_tokens = res.estimated_tokens;
+    } catch (e) {
+      console.error("Failed to inspect module:", e);
+    } finally {
+      ipModules[index].is_inspecting = false;
+      ipModules = [...ipModules];
+      saveRegistryConfig();
+    }
+  }
+
+  function getTokenBadgeClass(tokens: number | null): string {
+    if (tokens === null) return 'badge-secondary';
+    if (tokens < 50000) return 'badge-success';
+    if (tokens <= 150000) return 'badge-warning';
+    return 'badge-danger';
+  }
+
+  function getTokenBadgeLabel(tokens: number | null): string {
+    if (tokens === null) return 'Calculating...';
+    if (tokens < 50000) return `🟢 ~${tokens.toLocaleString()} tokens`;
+    if (tokens <= 150000) return `🟡 ~${tokens.toLocaleString()} tokens`;
+    return `🔴 ~${tokens.toLocaleString()} tokens (large)`;
+  }
+
+  function openAddModuleForm() {
+    editingIndex = null;
+    formModuleName = '';
+    formModuleFolder = '';
+    showAddForm = true;
+  }
+
+  function editModule(index: number) {
+    editingIndex = index;
+    formModuleName = ipModules[index].name;
+    formModuleFolder = ipModules[index].folder;
+    showAddForm = true;
+  }
+
+  function removeModule(index: number) {
+    ipModules.splice(index, 1);
+    ipModules = [...ipModules];
+    saveRegistryConfig();
+  }
+
+  async function confirmAddModule() {
+    if (!formModuleName.trim() || !formModuleFolder.trim()) return;
+    const name = formModuleName.trim();
+    const folder = formModuleFolder.trim();
+
+    if (editingIndex !== null && editingIndex >= 0 && editingIndex < ipModules.length) {
+      ipModules[editingIndex].name = name;
+      ipModules[editingIndex].folder = folder;
+      const idx = editingIndex;
+      showAddForm = false;
+      await inspectModule(idx, true);
+    } else {
+      const newMod: IPModule = {
+        name,
+        folder,
+        excluded_subfolders: [],
+        subfolders: [],
+        estimated_tokens: null,
+        file_count: null,
+        is_inspecting: false,
+        expanded_subfolders: false
+      };
+      ipModules.push(newMod);
+      ipModules = [...ipModules];
+      showAddForm = false;
+      const idx = ipModules.length - 1;
+      await inspectModule(idx, true);
+    }
+  }
+
+  function toggleSubfolderExclusion(moduleIndex: number, subfolder: string) {
+    const mod = ipModules[moduleIndex];
+    const idx = mod.excluded_subfolders.indexOf(subfolder);
+    if (idx >= 0) {
+      mod.excluded_subfolders.splice(idx, 1);
+    } else {
+      mod.excluded_subfolders.push(subfolder);
+    }
+    ipModules = [...ipModules];
+    inspectModule(moduleIndex);
+  }
+
+  function saveRegistryConfig() {
+    const serialized = ipModules.map(m => ({
+      name: m.name,
+      folder: m.folder,
+      excluded_subfolders: m.excluded_subfolders
+    }));
+    apiCall('/api/config/save', {
+      config: {
+        project_name: projectName,
+        design_dir: designDir,
+        output_dir: `workspace/${projectName}_artifacts`,
+        modules: serialized
+      },
+      resolved_duplicates: {}
+    });
+  }
+
+  async function loadSavedConfig() {
+    try {
+      const saved = await apiCall(`/api/config/load?project_name=${projectName}`, null, 'GET');
+      if (saved && saved.modules && Array.isArray(saved.modules) && saved.modules.length > 0) {
+        ipModules = saved.modules.map((m: any) => ({
+          name: m.name,
+          folder: m.folder,
+          excluded_subfolders: m.excluded_subfolders || [],
+          subfolders: [],
+          estimated_tokens: null,
+          file_count: null,
+          is_inspecting: false,
+          expanded_subfolders: false
+        }));
+        configLoadedNotice = `✅ Loaded ${ipModules.length} modules from saved config for "${projectName}"`;
+        for (let i = 0; i < ipModules.length; i++) {
+          inspectModule(i);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load saved config:', e);
+    }
+  }
+
+  // Folder Browser Overlay
+  async function fetchBrowsePath(path: string) {
+    browseLoading = true;
+    try {
+      const res = await apiCall('/api/browse_folder', { path });
+      browsePath = res.path;
+      browseSubdirs = res.subdirs || [];
+      browseParent = res.parent;
+    } catch (e) {
+      console.error('Failed to browse folder:', e);
+    } finally {
+      browseLoading = false;
+    }
+  }
+
+  function openFolderBrowser() {
+    const startPath = formModuleFolder.trim() || designDir.trim() || '/home/hackdac';
+    showFolderBrowser = true;
+    fetchBrowsePath(startPath);
+  }
+
+  function selectBrowserFolder() {
+    formModuleFolder = browsePath;
+    showFolderBrowser = false;
+  }
+
+  async function launchPipelineFromRegistry() {
+    if (ipModules.length === 0) return;
+    
+    saveRegistryConfig();
+    const serialized = ipModules.map(m => ({
+      name: m.name,
+      folder: m.folder,
+      excluded_subfolders: m.excluded_subfolders
+    }));
+
+    runStatus = {
+      running: true,
+      progress: 0,
+      total_modules: ipModules.length,
+      completed_modules: 0,
+      fully_validated: 0,
+      partially_validated: 0,
+      failed: 0,
+      logs: ["Launching SoC Security Pipeline with IP Module Registry..."],
+      validation_logs: ["Launching SoC Security Pipeline with IP Module Registry..."],
+      repair_logs: []
+    };
+    modulesList = [];
+    step = 'running';
+    activePhase = 'phase-0.1-0.2';
+
+    await apiCall('/api/run', { clean: true, project_name: projectName, modules: serialized });
+    pollStatus();
+  }
+
   function computeFlatHierarchy(hierarchyObj: any) {
     const result: Array<{ name: string; instName: string; level: number }> = [];
-    
     function traverse(node: any, level = 0) {
       if (!node) return;
       const name = node.module_name || node.name || "Unknown";
@@ -131,7 +385,6 @@
         node.children.forEach((child: any) => traverse(child, level + 1));
       }
     }
-
     if (hierarchyObj && typeof hierarchyObj === 'object') {
       if (hierarchyObj.module_name || hierarchyObj.name) {
         traverse(hierarchyObj);
@@ -179,7 +432,7 @@
   async function abortPipeline() {
     try {
       await apiCall('/api/pipeline/abort');
-      step = 'config';
+      step = 'setup';
       pollStatus();
     } catch (e) {
       console.error("Failed to abort pipeline:", e);
@@ -293,345 +546,71 @@
     }
   }
 
-  function toggleHideUnselected() {
-    hideUnselected = !hideUnselected;
-    if (hideUnselected) {
-      autoExpandTree();
-    }
-  }
-
-  function buildFolderTree(folders: string[], suggestedExclusions: string[]): FolderNode[] {
-    const rootNodes: FolderNode[] = [];
-    const nodeMap: Record<string, FolderNode> = {};
-    const sortedFolders = [...folders].sort((a, b) => a.localeCompare(b));
-
-    for (const f of sortedFolders) {
-      if (f === "") continue;
-      const parts = f.split('/');
-      let currentPath = "";
-      
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        const parentPath = currentPath;
-        currentPath = currentPath ? `${currentPath}/${part}` : part;
-        
-        if (!nodeMap[currentPath]) {
-          const node: FolderNode = {
-            name: part,
-            path: currentPath,
-            children: [],
-            isSuggestedExclusion: suggestedExclusions.includes(currentPath)
-          };
-          nodeMap[currentPath] = node;
-          
-          if (i === 0) {
-            rootNodes.push(node);
-          } else {
-            const parentNode = nodeMap[parentPath];
-            if (parentNode) {
-              parentNode.children.push(node);
-            }
-          }
-        }
-      }
-    }
-    return rootNodes;
-  }
-
-  function autoExpandTree() {
-    const newExpanded = new Set<string>();
-    
-    const analyzeNode = (node: FolderNode): { hasSelected: boolean; hasExcluded: boolean } => {
-      let isSelected = !excludedFolders.has(node.path);
-      let hasSelected = isSelected;
-      let hasExcluded = !isSelected;
-      
-      for (const child of node.children) {
-        const res = analyzeNode(child);
-        if (res.hasSelected) hasSelected = true;
-        if (res.hasExcluded) hasExcluded = true;
-      }
-      
-      if (hasSelected && hasExcluded) {
-        newExpanded.add(node.path);
-      }
-      
-      return { hasSelected, hasExcluded };
-    };
-    
-    folderTree.forEach(node => analyzeNode(node));
-    expandedNodes = newExpanded;
-  }
-
-  function handleTreeCheckToggle(event: CustomEvent<{ node: FolderNode; checked: boolean }>) {
-    const { node, checked } = event.detail;
-    
-    const walk = (n: FolderNode) => {
-      if (checked) {
-        excludedFolders.delete(n.path);
-      } else {
-        excludedFolders.add(n.path);
-      }
-      n.children.forEach(walk);
-    };
-    walk(node);
-    excludedFolders = excludedFolders; // trigger reactivity
-  }
-
-  function handleTreeExpandToggle(event: CustomEvent<{ path: string }>) {
-    const { path } = event.detail;
-    if (expandedNodes.has(path)) {
-      expandedNodes.delete(path);
-    } else {
-      expandedNodes.add(path);
-    }
-    expandedNodes = expandedNodes; // trigger reactivity
-  }
-
-  // Helper to call backend APIs
-  async function apiCall(endpoint: string, payload?: any) {
+  async function fetchFuzzingCandidates() {
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload ? JSON.stringify(payload) : undefined
-      });
-      return await response.json();
+      const data = await apiCall('/api/fuzzing/candidates', null, 'GET');
+      fuzzingState.status = data.status;
+      fuzzingState.is_running = data.is_running;
+      fuzzingState.error = data.error;
+      fuzzingCandidates = data.candidates || [];
+      
+      if (fuzzingState.is_running && !fuzzingStatusInterval) {
+        fuzzingStatusInterval = setInterval(fetchFuzzingCandidates, 2000);
+      } else if (!fuzzingState.is_running && fuzzingStatusInterval) {
+        clearInterval(fuzzingStatusInterval);
+        fuzzingStatusInterval = null;
+      }
     } catch (e) {
       console.error(e);
-      throw e;
     }
   }
 
-  async function handlePreScan() {
-    configError = '';
+  async function generateFuzzingRecommendations() {
     try {
-      const res = await apiCall('/api/scan', { design_dir: designDir, project_name: projectName });
-      if (res.error) {
-        configError = res.error;
-        return;
-      }
-      preScanData = res;
-      // Pre-populate exclusions
-      if (preScanData.saved_exclusions) {
-        excludedFolders = new Set(preScanData.saved_exclusions);
-        initialExclusions = new Set(preScanData.saved_exclusions);
-      } else {
-        excludedFolders = new Set(preScanData.suggested_exclusions);
-        initialExclusions = new Set(preScanData.suggested_exclusions);
-      }
-      // Pre-populate duplicate choices
-      if (preScanData.saved_duplicates) {
-        resolvedDuplicates = { ...preScanData.saved_duplicates };
-        initialDuplicates = { ...preScanData.saved_duplicates };
-      } else {
-        resolvedDuplicates = {};
-        preScanData.duplicates.forEach(d => {
-          resolvedDuplicates[d.module] = d.paths[0];
-        });
-        initialDuplicates = { ...resolvedDuplicates };
-      }
-      folderTree = buildFolderTree(preScanData.folders, preScanData.suggested_exclusions);
-      autoExpandTree();
-      step = 'config';
+      await apiCall('/api/fuzzing/recommend', null, 'POST');
+      fetchFuzzingCandidates();
     } catch (e) {
-      configError = 'Failed to scan directory. Make sure backend is running.';
+      console.error(e);
     }
   }
 
-  function toggleFolder(folder: string) {
-    if (excludedFolders.has(folder)) {
-      excludedFolders.delete(folder);
-    } else {
-      excludedFolders.add(folder);
-    }
-    excludedFolders = excludedFolders; // Trigger svelte reactivity
-  }
-
-  let saveConfigStatus: string = '';
-  async function handleSaveConfigOnly() {
-    saveConfigStatus = 'Saving...';
+  async function saveFuzzingRoster() {
     try {
-      const configPayload: ProjectConfig = {
-        project_name: projectName,
-        design_dir: designDir,
-        output_dir: `workspace/${projectName}_artifacts`,
-        exclude_patterns: Array.from(excludedFolders),
-        active_modules: []
-      };
-      
-      await apiCall('/api/config/save', {
-        config: configPayload,
-        resolved_duplicates: resolvedDuplicates
-      });
-      saveConfigStatus = 'Saved successfully!';
-      setTimeout(() => {
-        saveConfigStatus = '';
-      }, 3000);
+      await apiCall('/api/fuzzing/candidates/save', { candidates: fuzzingCandidates }, 'POST');
+      alert('Fuzzing Roster Saved successfully!');
     } catch (e) {
-      saveConfigStatus = 'Failed to save configuration';
-      setTimeout(() => {
-        saveConfigStatus = '';
-      }, 4000);
+      console.error(e);
+      alert('Failed to save roster');
     }
   }
 
-  function handleRestoreConfig() {
-    excludedFolders = new Set(initialExclusions);
-    resolvedDuplicates = { ...initialDuplicates };
-    autoExpandTree();
-  }
-
-  let fileInput: HTMLInputElement;
-
-  function triggerFilePicker() {
-    if (fileInput) {
-      fileInput.click();
-    }
-  }
-
-  function handleFileLoad(event: Event) {
-    const target = event.target as HTMLInputElement;
-    const file = target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const parsed = JSON.parse(e.target?.result as string);
-        let configData = parsed;
-        let resolvedDups = {};
-
-        if (parsed.config) {
-          configData = parsed.config;
-          resolvedDups = parsed.resolved_duplicates || {};
-        }
-
-        const excludePatterns = configData.exclude_patterns || [];
-        const newExclusions = new Set<string>();
-
-        preScanData.folders.forEach(f => {
-          const fSlash = `/${f}/`;
-          let isExcl = false;
-          for (const pat of excludePatterns) {
-            if (pat === f || fSlash.includes(pat) || f.includes(pat)) {
-              isExcl = true;
-              break;
-            }
-          }
-          if (isExcl) {
-            newExclusions.add(f);
-          }
-        });
-
-        excludedFolders = newExclusions;
-        resolvedDuplicates = resolvedDups;
-        autoExpandTree();
-
-        saveConfigStatus = 'Configuration loaded!';
-        setTimeout(() => {
-          saveConfigStatus = '';
-        }, 3000);
-      } catch (err) {
-        saveConfigStatus = 'Invalid JSON config file';
-        setTimeout(() => {
-          saveConfigStatus = '';
-        }, 4000);
-      }
-    };
-    reader.readAsText(file);
-    target.value = '';
-  }
-
-  async function handleStartRun() {
-    if (runStatus.completed_modules > 0) {
-      showLaunchModal = true;
-      return;
-    }
-    await confirmCleanRun();
-  }
-
-  async function confirmCleanRun() {
-    showLaunchModal = false;
-    try {
-      const configPayload: ProjectConfig = {
-        project_name: projectName,
-        design_dir: designDir,
-        output_dir: `workspace/${projectName}_artifacts`,
-        exclude_patterns: Array.from(excludedFolders),
-        active_modules: [] // Will be populated by backend scan
-      };
-      
-      // Save duplicate overrides config
-      await apiCall('/api/config/save', {
-        config: configPayload,
-        resolved_duplicates: resolvedDuplicates
-      });
-      
-      // Trigger execution
-      runStatus = {
-        running: true,
-        progress: 0,
-        total_modules: 0,
-        completed_modules: 0,
-        fully_validated: 0,
-        partially_validated: 0,
-        failed: 0,
-        logs: ["Clearing old workspace and restarting pipeline..."],
-        validation_logs: ["Clearing old workspace and restarting pipeline..."],
-        repair_logs: [],
-        synthesis_logs: []
-      };
-      modulesList = [];
-      synthesisStatus = {
-        synthesis_running: false,
-        synthesis_status: 'idle',
-        synthesis_logs: [],
-        modules: []
-      };
-      proceedStatus = '';
-      saveConfigStatus = '';
-      configError = '';
-
-      await apiCall('/api/run', { clean: true, project_name: projectName });
-      
-      step = 'running';
-      pollStatus();
-    } catch (e) {
-      configError = 'Failed to launch verification run.';
-    }
+  function toggleCandidate(index: number) {
+    fuzzingCandidates[index].recommended = !fuzzingCandidates[index].recommended;
+    fuzzingCandidates = [...fuzzingCandidates];
   }
 
   async function handleReRun() {
     try {
-      // Trigger execution with clean=true
+      const serialized = ipModules.map(m => ({
+        name: m.name,
+        folder: m.folder,
+        excluded_subfolders: m.excluded_subfolders
+      }));
       runStatus = {
         running: true,
         progress: 0,
-        total_modules: 0,
+        total_modules: ipModules.length,
         completed_modules: 0,
         fully_validated: 0,
         partially_validated: 0,
         failed: 0,
         logs: ["Clearing workspace and restarting pipeline..."],
         validation_logs: ["Clearing workspace and restarting pipeline..."],
-        repair_logs: [],
-        synthesis_logs: []
+        repair_logs: []
       };
       modulesList = [];
-      synthesisStatus = {
-        synthesis_running: false,
-        synthesis_status: 'idle',
-        synthesis_logs: [],
-        modules: []
-      };
-      proceedStatus = '';
-      saveConfigStatus = '';
-      configError = '';
-
-      await apiCall('/api/run', { clean: true, project_name: projectName });
-      
       step = 'running';
+      await apiCall('/api/run', { clean: true, project_name: projectName, modules: serialized });
       pollStatus();
     } catch (e) {
       configError = 'Failed to launch clean verification run.';
@@ -659,7 +638,6 @@
     }
   }
 
-  // Persist config fields, current step and active phase in localStorage to handle refreshes
   $: if (typeof window !== 'undefined') {
     localStorage.setItem('projectName', projectName);
     localStorage.setItem('designDir', designDir);
@@ -672,24 +650,21 @@
   }
 
   onMount(() => {
-    // Recover state from localStorage
     const savedProjectName = localStorage.getItem('projectName');
     const savedDesignDir = localStorage.getItem('designDir');
     const savedStep = localStorage.getItem('step');
     const savedActivePhase = localStorage.getItem('activePhase');
     if (savedProjectName) projectName = savedProjectName;
     if (savedDesignDir) designDir = savedDesignDir;
-    if (savedStep && (savedStep === 'config' || savedStep === 'results' || savedStep === 'running')) {
+    if (savedStep && (savedStep === 'results' || savedStep === 'running')) {
       step = savedStep as any;
     }
     if (savedActivePhase) {
       activePhase = savedActivePhase as any;
     }
     
-    // Check if a run is already active (overrides to 'running' if true)
+    loadSavedConfig();
     pollStatus();
-
-    // Fetch and continuously update synthesis status in the background
     fetchSynthesisStatus();
     synthesisStatusInterval = setInterval(fetchSynthesisStatus, 1500);
   });
@@ -708,8 +683,7 @@
         failed: 0,
         logs: ["Launching interactive Failure Repairer..."],
         validation_logs: [],
-        repair_logs: ["Launching interactive Failure Repairer..."],
-        synthesis_logs: []
+        repair_logs: ["Launching interactive Failure Repairer..."]
       };
       modulesList = [];
       const res = await apiCall('/api/repair');
@@ -729,7 +703,7 @@
       runStatus = {
         ...runStatus,
         running: false,
-        repair_logs: [e.message || e || "API configuration not found. Configure an API key before running AI Repair."]
+        repair_logs: [e.message || e || "API configuration not found."]
       };
       step = 'results';
       selectedConsoleLogTab = 'repair';
@@ -747,15 +721,11 @@
       const res = await apiCall('/api/proceed');
       if (res.status === 'success') {
         proceedStatus = `Successfully proceeded with ${res.active_modules.length} modules!`;
-        setTimeout(() => {
-          proceedStatus = '';
-        }, 5000);
+        setTimeout(() => { proceedStatus = ''; }, 5000);
       }
     } catch (e) {
       proceedStatus = 'Failed to proceed.';
-      setTimeout(() => {
-        proceedStatus = '';
-      }, 5000);
+      setTimeout(() => { proceedStatus = ''; }, 5000);
     } finally {
       isProceeding = false;
     }
@@ -780,7 +750,6 @@
   });
 
   let consoleElement: HTMLElement;
-
   afterUpdate(() => {
     if (consoleElement) {
       consoleElement.scrollTop = consoleElement.scrollHeight;
@@ -805,9 +774,9 @@
   </header>
 
   <div class="content-container">
-    <!-- SETUP STEP -->
+    <!-- SETUP STEP: IP MODULE REGISTRY -->
     {#if step === 'setup'}
-      <section class="card glass">
+      <section class="card glass registry-container">
         {#if runStatus.completed_modules > 0}
           <div class="existing-run-alert">
             <div class="alert-content">
@@ -820,25 +789,159 @@
           </div>
         {/if}
 
-        <h2>Ingest SoC Design Project</h2>
-        <p class="subtitle">Specify the root directory of your SystemVerilog/Verilog hardware project to initialize static discovery.</p>
-        
-        <div class="form-group">
-          <label for="project-name">Project Name</label>
-          <input type="text" id="project-name" bind:value={projectName} placeholder="e.g. opentitan" />
+        <div class="registry-header">
+          <div>
+            <h2>IP Module Registry</h2>
+            <p class="subtitle">Explicitly register IP modules for hardware security analysis. By default, all subfolders except <code>rtl</code> are excluded. Toggle subfolder chips to include additional folders as needed.</p>
+          </div>
+          <button class="btn btn-primary" on:click={openAddModuleForm}>+ Add Module</button>
         </div>
 
-        <div class="form-group">
-          <label for="design-dir">Design Root Directory</label>
-          <input type="text" id="design-dir" bind:value={designDir} placeholder="e.g. /home/hackdac/opentitan" />
-        </div>
-
-        {#if configError}
-          <div class="alert error">{configError}</div>
+        {#if configLoadedNotice}
+          <div class="alert notice">{configLoadedNotice}</div>
         {/if}
 
-        <button class="btn btn-primary" on:click={handlePreScan}>Discover Assets & Exclusions</button>
+        <div class="project-info-row">
+          <div class="form-group inline-group">
+            <label for="project-name">Project Identifier:</label>
+            <input type="text" id="project-name" bind:value={projectName} on:change={loadSavedConfig} placeholder="e.g. opentitan" />
+          </div>
+        </div>
+
+        <!-- Registered Modules Cards -->
+        <div class="modules-grid">
+          {#if ipModules.length === 0}
+            <div class="empty-registry">
+              <span class="icon">📦</span>
+              <p>No IP modules registered yet. Click <strong>"+ Add Module"</strong> to configure your first IP folder.</p>
+            </div>
+          {:else}
+            {#each ipModules as mod, index}
+              <div class="module-card">
+                <div class="module-card-header">
+                  <div class="module-title-area">
+                    <h3>{mod.name}</h3>
+                    <span class="folder-path" title={mod.folder}>{mod.folder}</span>
+                  </div>
+                  <div class="module-badge-area">
+                    {#if mod.is_inspecting}
+                      <span class="badge badge-secondary">Analyzing...</span>
+                    {:else}
+                      <span class="badge {getTokenBadgeClass(mod.estimated_tokens)}">
+                        {getTokenBadgeLabel(mod.estimated_tokens)}
+                      </span>
+                      {#if mod.file_count !== null}
+                        <span class="badge badge-info">{mod.file_count} RTL files</span>
+                      {/if}
+                    {/if}
+                  </div>
+                  <div class="module-actions">
+                    <button class="icon-btn" title="Edit Module" on:click={() => editModule(index)}>✏️</button>
+                    <button class="icon-btn danger" title="Remove Module" on:click={() => removeModule(index)}>🗑️</button>
+                  </div>
+                </div>
+
+                <!-- Subfolder Exclusion Controls -->
+                {#if mod.subfolders && mod.subfolders.length > 0}
+                  <div class="subfolders-section">
+                    <button class="toggle-subfolders-btn" on:click={() => { mod.expanded_subfolders = !mod.expanded_subfolders; ipModules = [...ipModules]; }}>
+                      {mod.expanded_subfolders ? '▲ Hide Subfolders' : `▼ Subfolders (${mod.excluded_subfolders.length} excluded)`}
+                    </button>
+
+                    {#if mod.expanded_subfolders}
+                      <div class="subfolder-checkboxes">
+                        {#each mod.subfolders as sf}
+                          <label class="subfolder-chip {mod.excluded_subfolders.includes(sf) ? 'excluded' : 'included'}">
+                            <input 
+                              type="checkbox" 
+                              checked={!mod.excluded_subfolders.includes(sf)} 
+                              on:change={() => toggleSubfolderExclusion(index, sf)}
+                            />
+                            <span>{sf}/</span>
+                          </label>
+                        {/each}
+                      </div>
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          {/if}
+        </div>
+
+        <!-- Registry Footer / Summary Bar -->
+        <div class="registry-footer">
+          <div class="total-tokens-box {totalTokensClass}">
+            <span>Total Estimated Token Load:</span>
+            <strong>~{totalTokens.toLocaleString()} tokens</strong>
+          </div>
+          <button 
+            class="btn btn-success btn-lg" 
+            disabled={ipModules.length === 0 || runStatus.running}
+            on:click={launchPipelineFromRegistry}
+          >
+            🚀 Launch Pipeline ({ipModules.length} Modules)
+          </button>
+        </div>
       </section>
+
+      <!-- Add / Edit Module Modal Form -->
+      {#if showAddForm}
+        <div class="modal-backdrop">
+          <div class="modal-card">
+            <h3>{editingIndex !== null ? 'Edit IP Module' : 'Add IP Module to Registry'}</h3>
+            <div class="form-group">
+              <label for="form-mod-name">Module Name / Identifier</label>
+              <input type="text" id="form-mod-name" bind:value={formModuleName} placeholder="e.g. aes, hmac, ibex" />
+            </div>
+            <div class="form-group">
+              <label for="form-mod-folder">Module Folder Path</label>
+              <div class="input-with-btn">
+                <input type="text" id="form-mod-folder" bind:value={formModuleFolder} placeholder="/path/to/hw/ip/aes" />
+                <button class="btn btn-secondary" on:click={openFolderBrowser}>📁 Browse</button>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" on:click={() => showAddForm = false}>Cancel</button>
+              <button class="btn btn-primary" on:click={confirmAddModule} disabled={!formModuleName.trim() || !formModuleFolder.trim()}>Confirm</button>
+            </div>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Folder Browser Modal Overlay -->
+      {#if showFolderBrowser}
+        <div class="modal-backdrop">
+          <div class="modal-card browser-modal">
+            <h3>Select IP Module Directory</h3>
+            <div class="browser-path-bar">
+              <code>{browsePath}</code>
+              {#if browseParent && browseParent !== browsePath}
+                <button class="btn btn-secondary btn-sm" on:click={() => fetchBrowsePath(browseParent)}>⬆ Go Up</button>
+              {/if}
+            </div>
+
+            <div class="browser-subdirs-list scrollable">
+              {#if browseLoading}
+                <div class="loading-spinner">Loading folder contents...</div>
+              {:else if browseSubdirs.length === 0}
+                <div class="empty-dir-notice">No subdirectories found.</div>
+              {:else}
+                {#each browseSubdirs as dir}
+                  <button class="subdir-row" on:click={() => fetchBrowsePath(`${browsePath}/${dir}`)}>
+                    📁 {dir}/
+                  </button>
+                {/each}
+              {/if}
+            </div>
+
+            <div class="modal-actions">
+              <button class="btn btn-secondary" on:click={() => showFolderBrowser = false}>Cancel</button>
+              <button class="btn btn-success" on:click={selectBrowserFolder}>✅ Select This Folder</button>
+            </div>
+          </div>
+        </div>
+      {/if}
     {:else}
       <!-- SPLIT SIDEBAR LAYOUT -->
       <div class="dashboard-layout">
@@ -855,18 +958,20 @@
             <button 
               class="sidebar-item {activePhase === 'phase-0.3' ? 'active' : ''}" 
               on:click={() => { activePhase = 'phase-0.3'; fetchContext(); }}
-              disabled={step === 'config'}
-              title={step === 'config' ? 'Complete validation first to unlock' : ''}
             >
               <span class="icon">🌳</span> Design Context (Phase 0.3)
             </button>
             <button 
               class="sidebar-item {activePhase === 'phase-0.4' ? 'active' : ''}" 
               on:click={() => { activePhase = 'phase-0.4'; fetchSynthesisStatus(); }}
-              disabled={step === 'config'}
-              title={step === 'config' ? 'Complete validation first to unlock' : ''}
             >
               <span class="icon">⚙️</span> Shared Synthesis (Phase 0.4)
+            </button>
+            <button 
+              class="sidebar-item {activePhase === 'phase-0.5' ? 'active' : ''}" 
+              on:click={() => { activePhase = 'phase-0.5'; fetchFuzzingCandidates(); }}
+            >
+              <span class="icon">🎯</span> Fuzzing Target Selection (Phase 0.5)
             </button>
           </div>
 
@@ -894,7 +999,7 @@
 
           <div class="sidebar-footer">
             <button class="btn btn-secondary btn-sm w-100" on:click={() => { step = 'setup'; activePhase = 'phase-0.1-0.2'; }}>
-              ← Change Project
+              ← IP Registry Setup
             </button>
           </div>
         </aside>
@@ -902,89 +1007,6 @@
         <!-- Main Workspace -->
         <div class="main-workspace">
           {#if activePhase === 'phase-0.1-0.2'}
-            <!-- CONFIGURATION STEP -->
-            {#if step === 'config'}
-              <div class="config-grid">
-                <!-- Exclusion Panel -->
-                <section class="card glass scrollable">
-                  <div class="panel-header-row">
-                    <h2>Directory Selection</h2>
-                    <button 
-                      type="button"
-                      class="btn btn-secondary btn-sm" 
-                      on:click={toggleHideUnselected} 
-                      title="Toggle collapse / hide of unselected folders"
-                    >
-                      {hideUnselected ? "Show All Folders" : "Collapse Unselected"}
-                    </button>
-                  </div>
-                  <p class="subtitle">Check the folders to include in analysis. Simulation, verification and testbench folders are unchecked by default to save token costs. Unselected folders will be collapsed and hidden when you click "Collapse Unselected".</p>
-                  
-                  <div class="tree-list">
-                    {#each folderTree as rootNode}
-                      <FolderTreeNode 
-                        node={rootNode} 
-                        {excludedFolders} 
-                        {expandedNodes} 
-                        {hideUnselected}
-                        on:toggleCheck={handleTreeCheckToggle}
-                        on:toggleExpand={handleTreeExpandToggle}
-                      />
-                    {/each}
-                  </div>
-                </section>
-
-                <!-- Conflict Resolution Panel -->
-                <section class="card glass scrollable">
-                  <h2>Duplicate Module Definitions</h2>
-                  <p class="subtitle">We found the same module defined in multiple files. Choose which definition to keep active to prevent build conflicts.</p>
-
-                  {#if preScanData.duplicates.length === 0}
-                    <div class="empty-state">No duplicate module definition conflicts found.</div>
-                  {:else}
-                    <div class="duplicate-list">
-                      {#each preScanData.duplicates as dup}
-                        <div class="duplicate-card">
-                          <h3>Module: <code>{dup.module}</code></h3>
-                          <div class="radio-group">
-                            {#each dup.paths as p}
-                              <label class="radio-label">
-                                <input 
-                                  type="radio" 
-                                  name={dup.module} 
-                                  value={p} 
-                                  bind:group={resolvedDuplicates[dup.module]} 
-                                />
-                                <span class="file-path-radio">{p}</span>
-                              </label>
-                            {/each}
-                          </div>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-
-                  <div class="action-footer">
-                    <input 
-                      type="file" 
-                      accept=".json" 
-                      style="display: none" 
-                      bind:this={fileInput} 
-                      on:change={handleFileLoad} 
-                    />
-                    <button class="btn btn-secondary" on:click={() => step = 'setup'}>Back</button>
-                    <button class="btn btn-secondary" on:click={triggerFilePicker}>Load Config File</button>
-                    <button class="btn btn-secondary" on:click={handleRestoreConfig}>Restore Saved</button>
-                    <button class="btn btn-info" on:click={handleSaveConfigOnly}>Save Config</button>
-                    <button class="btn btn-primary" on:click={handleStartRun} disabled={runStatus.running && runStatus.validation_status !== 'paused'}>Launch Pipeline</button>
-                    {#if saveConfigStatus}
-                      <span class="status-msg">{saveConfigStatus}</span>
-                    {/if}
-                  </div>
-                </section>
-              </div>
-            {/if}
-
             <!-- RUNNING / RESULTS MONITOR STEP -->
             {#if step === 'running' || step === 'results'}
               <div class="results-grid">
@@ -995,7 +1017,7 @@
                       <h2>Validation Status</h2>
                       {#if step === 'results'}
                         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                          <button class="btn btn-secondary btn-sm" on:click={() => step = 'config'}>Configure</button>
+                          <button class="btn btn-secondary btn-sm" on:click={() => step = 'setup'}>Registry</button>
                           <button class="btn btn-secondary btn-sm" on:click={handleReRun} disabled={runStatus.running && runStatus.validation_status !== 'paused'}>Clean & Re-run</button>
                           {#if runStatus.failed > 0}
                             <button class="btn btn-warning btn-sm" on:click={handleRepair} disabled={isRepairing || (runStatus.running && runStatus.validation_status !== 'paused')}>
@@ -1609,7 +1631,8 @@
                       {/if}
                     {/if}
                   </div>
-            </section>
+                </div>
+              </section>
 
           {:else}
             <!-- LOCKED PHASES PLACEHOLDER -->
@@ -1637,7 +1660,7 @@
         </p>
         <div class="modal-actions">
           <button class="btn btn-secondary" on:click={() => { showLaunchModal = false; step = 'results'; }}>Load Previous Results</button>
-          <button class="btn btn-primary" on:click={confirmCleanRun}>Run Clean Validation</button>
+          <button class="btn btn-primary" on:click={() => { showLaunchModal = false; launchPipelineFromRegistry(); }}>Run Clean Validation</button>
         </div>
       </div>
     </div>
@@ -1646,8 +1669,16 @@
   {#if selectedModuleForDetail}
     <div class="modal-backdrop" role="button" tabindex="0" on:click={() => selectedModuleForDetail = null} on:keydown={(e) => (e.key === 'Escape' || e.key === 'Enter') && (selectedModuleForDetail = null)}>
       <div class="modal card glass detail-modal" role="dialog" aria-modal="true" on:click|stopPropagation on:keydown|stopPropagation>
-        <div class="detail-header">
-          <h2>Module Diagnostic Report: <code>{selectedModuleForDetail.name}</code></h2>
+        <div class="detail-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 1rem;">
+            <h2 style="margin: 0;">Module Diagnostic Report: <code>{selectedModuleForDetail.name}</code></h2>
+            <button class="btn btn-secondary btn-sm" style="font-size: 0.8rem; padding: 0.25rem 0.6rem;" on:click={() => copyToClipboard(JSON.stringify(selectedModuleForDetail, null, 2))}>
+              📋 Copy All Diagnostics
+            </button>
+            {#if copyNotice}
+              <span class="badge status-completed" style="font-size: 0.75rem;">{copyNotice}</span>
+            {/if}
+          </div>
           <button class="close-btn" on:click={() => selectedModuleForDetail = null}>&times;</button>
         </div>
         
@@ -1677,17 +1708,48 @@
             {/if}
           </div>
 
-          {#if selectedModuleForDetail.errors && Object.keys(selectedModuleForDetail.errors).length > 0}
+          {#if selectedModuleForDetail.commands && Object.keys(selectedModuleForDetail.commands).length > 0}
             <div class="detail-section">
-              <h3>Compiler Error Diagnostics</h3>
-              {#each Object.entries(selectedModuleForDetail.errors) as [tool, errText]}
-                <div class="tool-error-box">
-                  <div class="tool-error-header">{tool} Output</div>
-                  <pre class="tool-error-pre">{errText}</pre>
+              <h3>Validation Commands Executed</h3>
+              {#each Object.entries(selectedModuleForDetail.commands) as [tool, cmdText]}
+                <div class="tool-error-box" style="margin-bottom: 1rem;">
+                  <div class="tool-error-header" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 0.4rem 0.8rem; border-radius: 4px 4px 0 0;">
+                    <span style="font-weight: bold; color: #38bdf8;">{tool} Command</span>
+                    <button class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" on:click={() => copyToClipboard(cmdText)}>
+                      📋 Copy Command
+                    </button>
+                  </div>
+                  <pre class="tool-error-pre" style="white-space: pre-wrap; word-break: break-all; background: #07090e; padding: 0.8rem; border-radius: 0 0 4px 4px; color: #4ade80; font-family: monospace; font-size: 0.8rem; max-height: 150px; overflow-y: auto;">{cmdText}</pre>
                 </div>
               {/each}
             </div>
           {/if}
+
+          <div class="detail-section">
+            <h3>Compiler Diagnostics & Output Logs</h3>
+            {#if selectedModuleForDetail.errors && Object.keys(selectedModuleForDetail.errors).length > 0}
+              {#each Object.entries(selectedModuleForDetail.errors) as [tool, errText]}
+                <div class="tool-error-box" style="margin-bottom: 1rem;">
+                  <div class="tool-error-header" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.05); padding: 0.4rem 0.8rem; border-radius: 4px 4px 0 0;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <span style="font-weight: bold; color: var(--accent-cyan); text-transform: uppercase;">{tool}</span>
+                      {#if selectedModuleForDetail.tool_statuses && selectedModuleForDetail.tool_statuses[tool]}
+                        <span class="status-badge status-{selectedModuleForDetail.tool_statuses[tool].toLowerCase()}" style="font-size: 0.7rem; padding: 0.1rem 0.4rem;">
+                          {selectedModuleForDetail.tool_statuses[tool]}
+                        </span>
+                      {/if}
+                    </div>
+                    <button class="btn btn-secondary btn-sm" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;" on:click={() => copyToClipboard(errText)}>
+                      📋 Copy {tool} Output
+                    </button>
+                  </div>
+                  <pre class="tool-error-pre" style="white-space: pre-wrap; word-break: break-word; background: #07090e; padding: 0.8rem; border-radius: 0 0 4px 4px; color: #a5b4fc; font-family: monospace; font-size: 0.85rem; max-height: 250px; overflow-y: auto;">{errText}</pre>
+                </div>
+              {/each}
+            {:else}
+              <p class="empty-text" style="color: var(--text-secondary); font-style: italic;">No compiler errors recorded for this module. (Status: {selectedModuleForDetail.status})</p>
+            {/if}
+          </div>
         </div>
       </div>
     </div>
@@ -2798,5 +2860,321 @@
   }
   .selected-row {
     background: rgba(88, 166, 255, 0.1) !important;
+  }
+
+  /* IP Module Registry Styles */
+  .registry-container {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .registry-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 1rem;
+  }
+
+  .project-info-row {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .inline-group {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+  }
+
+  .inline-group label {
+    white-space: nowrap;
+    margin-bottom: 0;
+    font-weight: 600;
+  }
+
+  .inline-group input {
+    max-width: 300px;
+  }
+
+  .modules-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 200px;
+  }
+
+  .empty-registry {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 2px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    gap: 0.75rem;
+  }
+
+  .empty-registry .icon {
+    font-size: 3rem;
+    opacity: 0.6;
+  }
+
+  .module-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    transition: transform 0.15s, border-color 0.15s;
+  }
+
+  .module-card:hover {
+    border-color: rgba(88, 166, 255, 0.3);
+  }
+
+  .module-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .module-title-area h3 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.1rem;
+    color: #ffffff;
+  }
+
+  .folder-path {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+    word-break: break-all;
+  }
+
+  .module-badge-area {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .module-actions {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 6px;
+    transition: background 0.15s;
+  }
+
+  .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .icon-btn.danger:hover {
+    background: rgba(248, 81, 73, 0.2);
+  }
+
+  .subfolders-section {
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
+    padding-top: 0.75rem;
+  }
+
+  .toggle-subfolders-btn {
+    background: transparent;
+    border: none;
+    color: #58a6ff;
+    font-size: 0.82rem;
+    cursor: pointer;
+    padding: 0;
+    font-weight: 500;
+  }
+
+  .toggle-subfolders-btn:hover {
+    text-decoration: underline;
+  }
+
+  .subfolder-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+  }
+
+  .subfolder-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-family: monospace;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.15s ease;
+  }
+
+  .subfolder-chip.included {
+    background: rgba(0, 230, 118, 0.1);
+    border-color: rgba(0, 230, 118, 0.3);
+    color: #69f0ae;
+  }
+
+  .subfolder-chip.excluded {
+    background: rgba(248, 81, 73, 0.1);
+    border-color: rgba(248, 81, 73, 0.3);
+    color: #ff7b72;
+    text-decoration: line-through;
+    opacity: 0.75;
+  }
+
+  .registry-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1rem 1.5rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin-top: 1rem;
+  }
+
+  .total-tokens-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .total-tokens-box span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .total-tokens-box strong {
+    font-size: 1.2rem;
+  }
+
+  .tokens-safe strong { color: #69f0ae; }
+  .tokens-warn strong { color: #ffd54f; }
+  .tokens-danger strong { color: #ff7b72; }
+
+  /* Modal Overlays */
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999;
+  }
+
+  .modal-card {
+    background: #161b22;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    padding: 1.75rem;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 16px 32px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .modal-card.browser-modal {
+    max-width: 650px;
+  }
+
+  .input-with-btn {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .input-with-btn input {
+    flex: 1;
+  }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+
+  .browser-path-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.4);
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .browser-path-bar code {
+    font-size: 0.85rem;
+    color: #58a6ff;
+    word-break: break-all;
+  }
+
+  .browser-subdirs-list {
+    max-height: 250px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 0.5rem;
+    background: rgba(0,0,0,0.2);
+  }
+
+  .subdir-row {
+    background: transparent;
+    border: none;
+    color: #e6edf3;
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 0.88rem;
+    transition: background 0.12s;
+  }
+
+  .subdir-row:hover {
+    background: rgba(88, 166, 255, 0.15);
+    color: #ffffff;
+  }
+
+  .loading-spinner, .empty-dir-notice {
+    padding: 1.5rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
   }
 </style>
