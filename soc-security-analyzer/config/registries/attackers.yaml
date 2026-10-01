@@ -1,0 +1,122 @@
+attackers:
+  - id: SW_UNPRIV
+    name: UNPRIVILEGED_SW
+    description: "Unprivileged user-mode software execution context"
+    capabilities:
+      - bus_read
+      - bus_write
+    boundary:
+      boundary_type: BUS
+      protocol: TL_UL
+      description: "Host system interconnect / bus interface"
+    privilege_level: UNPRIVILEGED
+    allowed_stimulus:
+      - register_read
+      - register_write
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/attackers.yaml"
+      author: "security_architect"
+      description: "Baseline unprivileged software attacker model"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: SW_PRIV
+    name: PRIVILEGED_SW
+    description: "Privileged supervisor/firmware execution context"
+    capabilities:
+      - bus_read
+      - bus_write
+      - dma_configure
+      - interrupt_handle
+    boundary:
+      boundary_type: BUS
+      protocol: TL_UL
+      description: "Host system interconnect / bus interface"
+    privilege_level: PRIVILEGED
+    allowed_stimulus:
+      - register_read
+      - register_write
+      - control_write
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/attackers.yaml"
+      author: "security_architect"
+      description: "Baseline privileged software attacker model"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: EXTERNAL_PIN
+    name: EXTERNAL_PIN
+    description: "Attacker with physical or direct board-level access to external chip package pins"
+    capabilities:
+      - pin_stimulus
+      - voltage_glitch
+      - clock_glitch
+    boundary:
+      boundary_type: PIN
+      protocol: GPIO
+      description: "External physical package pins"
+    privilege_level: EXTERNAL
+    allowed_stimulus:
+      - pin_toggle
+      - analog_injection
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/attackers.yaml"
+      author: "security_architect"
+      description: "Physical external pin attacker model"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: DEBUG_UNAUTH
+    name: DEBUG_UNAUTH
+    description: "Unauthenticated actor attempting physical or logical access through debug interfaces"
+    capabilities:
+      - jtag_probe
+      - scan_dump
+    boundary:
+      boundary_type: DEBUG_PORT
+      protocol: JTAG
+      description: "External JTAG TAP interface"
+    privilege_level: DEBUG
+    allowed_stimulus:
+      - tap_reset
+      - idcode_read
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/attackers.yaml"
+      author: "security_architect"
+      description: "Unauthenticated debug port access"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: DEBUG_AUTH
+    name: DEBUG_AUTH
+    description: "Authenticated debug tool with valid hardware debug token"
+    capabilities:
+      - jtag_probe
+      - memory_dump
+      - cpu_halt
+      - register_write
+    boundary:
+      boundary_type: DEBUG_PORT
+      protocol: JTAG
+      description: "Authenticated JTAG debug transport"
+    privilege_level: DEBUG
+    allowed_stimulus:
+      - debug_unlock
+      - memory_read
+      - memory_write
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/attackers.yaml"
+      author: "security_architect"
+      description: "Authenticated hardware debugger model"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"

@@ -1,0 +1,28 @@
+declassifiers:
+  - id: DECL_AES_CIPHERTEXT
+    source_asset_id: ASSET_AES_KEY
+    sink_target: SW_UNPRIV
+    allowed_transformation: CIPHERTEXT_AES
+    justification: "Cryptographic cipher transforms secret key/plaintext into authenticated ciphertext prior to bus egress"
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/declassifiers.yaml"
+      author: "security_architect"
+      description: "Approved AES encryption transformation pipeline"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: DECL_LC_TOKEN_HASH
+    source_asset_id: ASSET_LC_STATE
+    sink_target: EXTERNAL_PIN
+    allowed_transformation: HASH_KMAC
+    justification: "Lifecycle transition token response is one-way hashed with KMAC before transmission across external pin"
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/declassifiers.yaml"
+      author: "security_architect"
+      description: "Approved KMAC one-way token digest declassification"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"

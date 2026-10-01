@@ -1,5 +1,9 @@
 workspace/
 .node/
 __pycache__/
+**/__pycache__/
+*.pyc
 build/
 *.egg-info/
+node_modules/
+dist/

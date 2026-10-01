@@ -70,13 +70,15 @@ def resolve_project_base(files: List[str]) -> str:
             return os.path.commonpath(valid_paths)
         except Exception:
             pass
-    return "/home/hackdac/opentitan" # Fallback
+    return os.getcwd() # Dynamic fallback
 
-def find_include_file(filename: str, base_dir: str = "/home/hackdac/opentitan") -> str | None:
+def find_include_file(filename: str, base_dir: str = "") -> str | None:
     """Recursively searches for a file, prioritizing base_dir, then workspace, then home (excluding hidden folders)."""
     skip_dirs = {".git", ".github", "obj_dir", "build", "workspace", "node_modules"}
+    if not base_dir:
+        base_dir = os.getcwd()
     
-    # 1. Search in base_dir (opentitan)
+    # 1. Search in base_dir
     if os.path.exists(base_dir):
         for root, dirs, files in os.walk(base_dir):
             dirs[:] = [d for d in dirs if d not in skip_dirs]
@@ -218,12 +220,16 @@ def find_all_package_files(filename: str, base_dir: str = "/home/hackdac/opentit
                 
     return list(set(found_paths))
 
-def find_real_project_file(symbol_name: str, base_dir: str = "/home/hackdac/opentitan") -> str | None:
+def find_real_project_file(symbol_name: str, base_dir: str = "") -> str | None:
     """
     Recursively searches the entire project repository (base_dir) for a real SystemVerilog file
     defining module or package `symbol_name`, or named `symbol_name.sv` / `symbol_name.v` / `symbol_name_pkg.sv`.
     """
-    if not symbol_name or not base_dir or not os.path.exists(base_dir):
+    if not symbol_name:
+        return None
+    if not base_dir:
+        base_dir = os.getcwd()
+    if not os.path.exists(base_dir):
         return None
         
     skip_dirs = {".git", ".github", "obj_dir", "build", "workspace", "node_modules", "target"}
@@ -994,14 +1000,31 @@ def validate_tool_for_module(
             
             if tool_name == "verible":
                 if not diag["genuine_findings"] and not diag["missing_dependencies"]:
-                    final_status = "PARTIAL" if diag["version_drift_artifacts"] else "VALIDATED"
+                    if stubs_created:
+                        final_status = "NEEDS_STUB"
+                    else:
+                        final_status = "PARTIAL" if diag["version_drift_artifacts"] else "VALIDATED"
                     final_summary = f"Parsed with lowRISC styleguide rules ({len(diag['version_drift_artifacts'])} style item(s))"
                     return final_status, final_summary, attempts_history, current_files
             
             elif tool_name == "verilator":
                 if not diag["genuine_findings"] and not diag["missing_dependencies"]:
-                    final_status = "PARTIAL"
-                    final_summary = f"Validated (Verilator 5.048 version drift artifacts present: {len(diag['version_drift_artifacts'])} item(s))"
+                    if stubs_created:
+                        final_status = "NEEDS_STUB"
+                    elif diag["version_drift_artifacts"]:
+                        final_status = "PARTIAL"
+                    elif exit_code == 0 and compressed["summary"]["warning_count"] > 0:
+                        final_status = "PARTIAL"
+                    else:
+                        final_status = "VALIDATED"
+                    
+                    if final_status == "PARTIAL":
+                        count = len(diag["version_drift_artifacts"]) or compressed["summary"]["warning_count"]
+                        final_summary = f"Validated (Verilator 5.048 version drift artifacts present: {count} item(s))"
+                    elif final_status == "NEEDS_STUB":
+                        final_summary = "Validated with auto-generated stubs"
+                    else:
+                        final_summary = "Clean compilation with no warnings/errors"
                     return final_status, final_summary, attempts_history, current_files
 
             if exit_code == 0:

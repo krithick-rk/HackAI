@@ -81,10 +81,12 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
         
         # Check for instantiated modules not in modules_map and resolve from project repository
         from src.soc_analyzer.phase0.tool_validator import find_real_project_file
-        instantiated_names = mdata.get("instantiates", [])
         for inst in instantiated_names:
             if inst not in modules_map:
-                real_inst_file = find_real_project_file(inst, "/home/hackdac/opentitan")
+                parent_dir = os.path.dirname(defining_file)
+                real_inst_file = find_real_project_file(inst, parent_dir)
+                if not real_inst_file:
+                    real_inst_file = find_real_project_file(inst, os.getcwd())
                 if real_inst_file and os.path.exists(real_inst_file) and real_inst_file != defining_file:
                     child_files_clean.add(real_inst_file)
         

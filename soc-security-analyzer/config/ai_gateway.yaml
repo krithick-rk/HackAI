@@ -1,0 +1,47 @@
+# SoC Security Analyzer V2 - AI Gateway Configuration
+ai:
+  enabled: true
+
+  terminal:
+    preferred_backend: antigravity
+    fallback_backend: codex
+
+  providers:
+    antigravity:
+      enabled: true
+      executable: ""
+      sandbox: true
+      timeout: 60.0
+
+    codex:
+      enabled: true
+      executable: ""
+      timeout: 60.0
+
+    claude:
+      # Strictly dormant: never invoked in this build
+      enabled: false
+      executable: ""
+
+    api:
+      # Disabled by default: credentials remain unavailable
+      enabled: false
+
+budget:
+  run_limit: 0.0          # 0 = unlimited / disabled
+  module_limit: 0.0       # 0 = unlimited / disabled
+  per_call_limit: 0.0     # 0 = unlimited / disabled
+  validation_reserve: 0.0 # Reserved spend for REFUTE/EXPLAIN
+  max_retries: 2
+  max_concurrency: 1
+
+cache:
+  enabled: true
+
+pricing:
+  version: "1.0"
+  terminal_cost_per_call: 0.0
+  strong_input_price_per_1k: 0.003
+  strong_output_price_per_1k: 0.015
+  cheap_input_price_per_1k: 0.00015
+  cheap_output_price_per_1k: 0.0006

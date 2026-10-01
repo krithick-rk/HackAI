@@ -85,10 +85,6 @@ def sanitize_prim_path(fpath: str) -> str:
     """
     for prim_vendor in ['prim_asap7', 'prim_xilinx', 'prim_tsmc', 'prim_sky130', 'prim_cw305', 'prim_fep']:
         if prim_vendor in fpath:
-            fname = os.path.basename(fpath)
-            gen_path = os.path.join('/home/hackdac/opentitan/hw/ip/prim_generic/rtl', fname)
-            if os.path.exists(gen_path):
-                return gen_path
             alt_gen = fpath.replace(prim_vendor, 'prim_generic')
             if os.path.exists(alt_gen):
                 return alt_gen
@@ -134,13 +130,6 @@ def parse_eda_manifest(eda_path: str) -> Dict[str, Any]:
             if os.path.exists(inc_abs):
                 inc_dirs.add(inc_abs)
                 
-    # Ensure prim_generic clock gating is included if clock gating sync is present
-    if any("clock_gating_sync" in f for f in sv_files):
-        cg_path = "/home/hackdac/opentitan/hw/ip/prim_generic/rtl/prim_clock_gating.sv"
-        if os.path.exists(cg_path) and cg_path not in sv_files:
-            sv_files.insert(0, cg_path)
-            inc_dirs.add(os.path.dirname(cg_path))
-            
     toplevel = data.get("toplevel") or ""
             
     return {

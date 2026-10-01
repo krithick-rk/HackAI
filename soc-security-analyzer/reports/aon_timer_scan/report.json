@@ -1,0 +1,626 @@
+{
+  "schema_version": "2.0.0",
+  "run": {
+    "run_id": "run_89c11969",
+    "repository": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl",
+    "source_snapshot_hash": "9544ddca47adae74",
+    "configuration": "default",
+    "top": "aon_timer_core",
+    "start_time": "2026-10-01T06:29:22.873295+00:00",
+    "end_time": "2026-10-01T06:29:23.163129+00:00",
+    "status": "COMPLETED",
+    "tool_versions": {
+      "slang": "available",
+      "z3": "5.1.0",
+      "verilator": "5.048",
+      "yosys": "available"
+    },
+    "analyzability_summary": {
+      "normal": 0,
+      "degraded": 2,
+      "highly_obfuscated": 0
+    },
+    "finding_summary": {
+      "CONFIRMED": 0,
+      "PROBABLE": 3,
+      "LEAD": 0,
+      "WEAKNESS_ONLY": 0
+    },
+    "cost_summary": {
+      "api_status": "DISABLED",
+      "run_budget_usd": 0.0,
+      "spent_usd": 0.0,
+      "remaining_usd": 0.0,
+      "terminal_calls": 3,
+      "api_calls": 0,
+      "cache_hits": 0
+    },
+    "artifact_directory": "reports/aon_timer_scan",
+    "metadata": {}
+  },
+  "configuration": {
+    "active_config": "default",
+    "top": "aon_timer_core",
+    "repository": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl"
+  },
+  "analyzability": {
+    "summary": {
+      "normal": 0,
+      "degraded": 2,
+      "highly_obfuscated": 0
+    },
+    "modules": {
+      "aon_timer_core": {
+        "level": "DEGRADED",
+        "overall_score": 0.69,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 0.8,
+          "black_box_freedom": 1.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "Classified as DEGRADED (score 0.69 < 0.70)"
+        ]
+      },
+      "aon_timer_reg_top": {
+        "level": "DEGRADED",
+        "overall_score": 0.57,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 1.0,
+          "black_box_freedom": 0.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "High black-box/opaque ratio (1.00)",
+          "Classified as DEGRADED (score 0.57 < 0.70)"
+        ]
+      }
+    },
+    "obfuscation_notice": "Semantic AI coverage is reduced in degraded/obfuscated regions; absence of AI finding does not imply cleanliness."
+  },
+  "findings": [
+    {
+      "finding_id": "fnd_00e5aa6e2a",
+      "title": "Security register 'aon_timer_core.wkup_count_wr_data_o' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'aon_timer_core.wkup_count_wr_data_o' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        7,
+        7
+      ],
+      "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+      "configuration": "default",
+      "asset": "aon_timer_core.wkup_count_wr_data_o",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_fb1e726c15",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "aon_timer_core.wkup_count_wr_data_o:security_sink",
+          "nodes": {
+            "aon_timer_core.wkup_count_wr_data_o:security_sink": {
+              "node_id": "aon_timer_core.wkup_count_wr_data_o:security_sink",
+              "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "aon_timer_core.wkup_count_wr_data_o:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "08ccec215ecfbb3c",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:29:22.891314+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_f3c094ed",
+          "evidence_type": "REGISTRY",
+          "producer": "aon_timer_core.wkup_count_wr_data_o",
+          "artifact_reference": "aon_timer_core.wkup_count_wr_data_o",
+          "hash": "aon_timer_core.wkup_count_wr_data_o",
+          "configuration": "default",
+          "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:29:22.891454+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_0116cb21",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "08ccec215ecfbb3c",
+          "hash": "08ccec215ecfbb3c",
+          "configuration": "default",
+          "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:29:22.891462+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+          "configuration": "default",
+          "line_range": [
+            7,
+            7
+          ],
+          "file_path": "../../../../opentitan/hw/ip/aon_timer/rtl/aon_timer_core.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:29:22.891478+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "aon_timer_core.wkup_count_wr_data_o",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_fb1e726c15",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "aon_timer_core.wkup_count_wr_data_o:security_sink",
+            "nodes": {
+              "aon_timer_core.wkup_count_wr_data_o:security_sink": {
+                "node_id": "aon_timer_core.wkup_count_wr_data_o:security_sink",
+                "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "aon_timer_core.wkup_count_wr_data_o:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "08ccec215ecfbb3c",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:29:22.891314+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_00228a4602",
+      "title": "Security register 'aon_timer_reg_top.sec_reg' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'aon_timer_reg_top.sec_reg' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        9,
+        9
+      ],
+      "instance_path": "aon_timer_reg_top.sec_reg",
+      "configuration": "default",
+      "asset": "aon_timer_reg_top.sec_reg",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_a891620cb5",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "aon_timer_reg_top.sec_reg:security_sink",
+          "nodes": {
+            "aon_timer_reg_top.sec_reg:security_sink": {
+              "node_id": "aon_timer_reg_top.sec_reg:security_sink",
+              "instance_path": "aon_timer_reg_top.sec_reg",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "aon_timer_reg_top.sec_reg:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "a5d44199b701d8ca",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:29:22.891952+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_80b7de91",
+          "evidence_type": "REGISTRY",
+          "producer": "aon_timer_reg_top.sec_reg",
+          "artifact_reference": "aon_timer_reg_top.sec_reg",
+          "hash": "aon_timer_reg_top.sec_reg",
+          "configuration": "default",
+          "instance_path": "aon_timer_reg_top.sec_reg",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:29:22.892012+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_838167b5",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "a5d44199b701d8ca",
+          "hash": "a5d44199b701d8ca",
+          "configuration": "default",
+          "instance_path": "aon_timer_reg_top.sec_reg",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:29:22.892015+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "aon_timer_reg_top.sec_reg",
+          "configuration": "default",
+          "line_range": [
+            9,
+            9
+          ],
+          "file_path": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl/aon_timer_reg_top.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:29:22.892026+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "aon_timer_reg_top.sec_reg",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_a891620cb5",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "aon_timer_reg_top.sec_reg:security_sink",
+            "nodes": {
+              "aon_timer_reg_top.sec_reg:security_sink": {
+                "node_id": "aon_timer_reg_top.sec_reg:security_sink",
+                "instance_path": "aon_timer_reg_top.sec_reg",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "aon_timer_reg_top.sec_reg:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "a5d44199b701d8ca",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:29:22.891952+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_fc61b8997e",
+      "title": "Clocked security module 'aon_timer_reg_top' defines no reset signals",
+      "weakness_class": "MISSING_RESET",
+      "severity": "MEDIUM",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Module 'aon_timer_reg_top' contains sequential clock domains and security assets but lacks reset signals, risking uninitialized security state on power-up.",
+      "line_range": [
+        9,
+        9
+      ],
+      "instance_path": "aon_timer_reg_top",
+      "configuration": "default",
+      "asset": null,
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_39b7a99967",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "aon_timer_reg_top:security_sink",
+          "nodes": {
+            "aon_timer_reg_top:security_sink": {
+              "node_id": "aon_timer_reg_top:security_sink",
+              "instance_path": "aon_timer_reg_top",
+              "signal_name": "security_sink",
+              "definition_id": "aon_timer_reg_top",
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "aon_timer_reg_top:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "c507a5a700ec6afd",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:29:22.892326+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1271",
+      "evidence": [
+        {
+          "evidence_id": "ev_2d35fd2d",
+          "evidence_type": "DESIGN_DB",
+          "producer": "aon_timer_reg_top",
+          "artifact_reference": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl/aon_timer_reg_top.sv",
+          "hash": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl/aon_timer_reg_top.sv",
+          "configuration": "default",
+          "instance_path": "aon_timer_reg_top",
+          "description": "Clock declared: clk_i; Resets: 0",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:29:22.892380+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_4b6b8cb3",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "c507a5a700ec6afd",
+          "hash": "c507a5a700ec6afd",
+          "configuration": "default",
+          "instance_path": "aon_timer_reg_top",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:29:22.892384+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "aon_timer_reg_top",
+          "configuration": "default",
+          "line_range": [
+            9,
+            9
+          ],
+          "file_path": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl/aon_timer_reg_top.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:29:22.892391+00:00"
+        }
+      ],
+      "metadata": {
+        "reachability": {
+          "candidate_id": "cand_39b7a99967",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "aon_timer_reg_top:security_sink",
+            "nodes": {
+              "aon_timer_reg_top:security_sink": {
+                "node_id": "aon_timer_reg_top:security_sink",
+                "instance_path": "aon_timer_reg_top",
+                "signal_name": "security_sink",
+                "definition_id": "aon_timer_reg_top",
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "aon_timer_reg_top:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "c507a5a700ec6afd",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:29:22.892326+00:00"
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_f3c094ed",
+      "evidence_type": "REGISTRY",
+      "producer": "aon_timer_core.wkup_count_wr_data_o",
+      "artifact_reference": "aon_timer_core.wkup_count_wr_data_o",
+      "hash": "aon_timer_core.wkup_count_wr_data_o",
+      "configuration": "default",
+      "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:29:22.891454+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_0116cb21",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "08ccec215ecfbb3c",
+      "hash": "08ccec215ecfbb3c",
+      "configuration": "default",
+      "instance_path": "aon_timer_core.wkup_count_wr_data_o",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:29:22.891462+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_80b7de91",
+      "evidence_type": "REGISTRY",
+      "producer": "aon_timer_reg_top.sec_reg",
+      "artifact_reference": "aon_timer_reg_top.sec_reg",
+      "hash": "aon_timer_reg_top.sec_reg",
+      "configuration": "default",
+      "instance_path": "aon_timer_reg_top.sec_reg",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:29:22.892012+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_838167b5",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "a5d44199b701d8ca",
+      "hash": "a5d44199b701d8ca",
+      "configuration": "default",
+      "instance_path": "aon_timer_reg_top.sec_reg",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:29:22.892015+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_2d35fd2d",
+      "evidence_type": "DESIGN_DB",
+      "producer": "aon_timer_reg_top",
+      "artifact_reference": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl/aon_timer_reg_top.sv",
+      "hash": "/home/hackdac/opentitan/hw/ip/aon_timer/rtl/aon_timer_reg_top.sv",
+      "configuration": "default",
+      "instance_path": "aon_timer_reg_top",
+      "description": "Clock declared: clk_i; Resets: 0",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:29:22.892380+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_4b6b8cb3",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "c507a5a700ec6afd",
+      "hash": "c507a5a700ec6afd",
+      "configuration": "default",
+      "instance_path": "aon_timer_reg_top",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:29:22.892384+00:00",
+      "metadata": {}
+    }
+  ],
+  "witnesses": [],
+  "cost": {
+    "api_status": "DISABLED",
+    "run_budget_usd": 0.0,
+    "spent_usd": 0.0,
+    "remaining_usd": 0.0,
+    "terminal_calls": 3,
+    "api_calls": 0,
+    "cache_hits": 0
+  },
+  "runtime": {
+    "start_time": "2026-10-01T06:29:22.873295+00:00",
+    "end_time": "2026-10-01T06:29:23.163129+00:00"
+  },
+  "coverage": {
+    "total_modules": 2,
+    "analyzed_modules": 2
+  },
+  "benchmark_references": {},
+  "audit_references": {}
+}

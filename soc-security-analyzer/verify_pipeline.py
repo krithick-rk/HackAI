@@ -138,6 +138,7 @@ def main():
     output_dir = args.output_dir or "workspace/opentitan_artifacts"
     os.makedirs(output_dir, exist_ok=True)
     maps = {}
+    modules_spec = None
 
     if args.modules_json:
         modules_json_path = os.path.abspath(args.modules_json)

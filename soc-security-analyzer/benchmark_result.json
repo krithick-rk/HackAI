@@ -1,0 +1,341 @@
+{
+  "run_id": "bench_14a33552",
+  "commit": "develop",
+  "timestamp": "2026-10-01T06:11:05.945627+00:00",
+  "benchmark_version": "2.0.0",
+  "totals": {
+    "cases": 23,
+    "true_positive": 7,
+    "false_positive": 4,
+    "true_negative": 6,
+    "false_negative": 6
+  },
+  "metrics": {
+    "total_cases": 23,
+    "tp": 7,
+    "fp": 4,
+    "tn": 6,
+    "fn": 6,
+    "recall": 0.5385,
+    "precision": 0.6364,
+    "wrong_refutation_count": 0,
+    "wrong_refutation_rate": 0.0,
+    "unknown_to_terminal_count": 0,
+    "obfuscation_recall_retention": 0.6667,
+    "recall_by_class": {
+      "CRYPTO_CONTROL": 0.0,
+      "INFORMATION_FLOW": 0.0,
+      "RESET": 1.0,
+      "DECODE_ADDRESS": 1.0,
+      "FAULT_INJECTION": 0.0,
+      "DEBUG_TEST_GATING": 0.5,
+      "FSM": 0.0,
+      "ACCESS_CONTROL": 0.6667
+    },
+    "recall_by_difficulty": {
+      "INTERMEDIATE": 0.5,
+      "HARD": 0.0,
+      "BASIC": 0.6667
+    },
+    "lane_precision": {
+      "PROBABLE": 0.2609,
+      "UNADJUDICATED": 0.0,
+      "LEAD": 0.3333
+    },
+    "harness_coverage": {
+      "total_eligible": 23,
+      "dynamic_capable": 22,
+      "harness_unsupported": 0
+    },
+    "cost_metrics": {
+      "ai_calls": 0,
+      "terminal_calls": 23,
+      "api_calls": 0,
+      "estimated_cost_usd": 0.0,
+      "actual_cost_usd": 0.0,
+      "cost_per_true_positive": 0.0
+    },
+    "runtime_metrics": {
+      "total_seconds": 0.1628,
+      "static_seconds": 0.1628,
+      "formal_seconds": 0.0,
+      "simulation_seconds": 0.0,
+      "ai_seconds": 0.0
+    }
+  },
+  "case_results": [
+    {
+      "case_id": "case_ac_01_missing_regwen",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0132,
+      "notes": []
+    },
+    {
+      "case_id": "case_ac_02_subtle_guard_bypass",
+      "expected": "TRUE_POSITIVE",
+      "detected": false,
+      "lane": null,
+      "status": null,
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0061,
+      "notes": [
+        "Vulnerability not detected (FN)"
+      ]
+    },
+    {
+      "case_id": "case_ac_03_valid_regwen_safe",
+      "expected": "TRUE_NEGATIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0079,
+      "notes": []
+    },
+    {
+      "case_id": "case_ac_04_unreachable_write",
+      "expected": "UNREACHABLE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0063,
+      "notes": [
+        "Unreachable case incorrectly confirmed in lane PROBABLE"
+      ]
+    },
+    {
+      "case_id": "case_rst_01_unreset_security_reg",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0075,
+      "notes": []
+    },
+    {
+      "case_id": "case_rst_02_polarity_inconsistency",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0063,
+      "notes": []
+    },
+    {
+      "case_id": "case_rst_03_safe_reset_defaults",
+      "expected": "TRUE_NEGATIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "PARKED",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0061,
+      "notes": [
+        "Safe design wrongly flagged as PROBABLE (FP)"
+      ]
+    },
+    {
+      "case_id": "case_fsm_01_missing_default_state",
+      "expected": "TRUE_POSITIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.008,
+      "notes": [
+        "Vulnerability not detected (FN)"
+      ]
+    },
+    {
+      "case_id": "case_fsm_03_legal_fsm_with_default",
+      "expected": "TRUE_NEGATIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0057,
+      "notes": []
+    },
+    {
+      "case_id": "case_dbg_01_ungated_debug_bus",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "LEAD",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0082,
+      "notes": []
+    },
+    {
+      "case_id": "case_dbg_02_properly_lifecycle_gated",
+      "expected": "TRUE_NEGATIVE",
+      "detected": true,
+      "lane": "LEAD",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0067,
+      "notes": [
+        "Safe design wrongly flagged as LEAD (FP)"
+      ]
+    },
+    {
+      "case_id": "case_dec_01_address_overlap",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "CANDIDATE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.006,
+      "notes": []
+    },
+    {
+      "case_id": "case_dec_02_documented_mirror_safe",
+      "expected": "TRUE_NEGATIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0079,
+      "notes": []
+    },
+    {
+      "case_id": "case_crypto_01_hardcoded_key_enable",
+      "expected": "TRUE_POSITIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0056,
+      "notes": [
+        "Vulnerability not detected (FN)"
+      ]
+    },
+    {
+      "case_id": "case_const_02_intentional_tieoff_safe",
+      "expected": "TRUE_NEGATIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0077,
+      "notes": []
+    },
+    {
+      "case_id": "case_inf_01_unmasked_secret_leak",
+      "expected": "TRUE_POSITIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0061,
+      "notes": [
+        "Vulnerability not detected (FN)"
+      ]
+    },
+    {
+      "case_id": "case_inf_02_approved_declassifier_safe",
+      "expected": "TRUE_NEGATIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0058,
+      "notes": []
+    },
+    {
+      "case_id": "case_fi_01_ungarded_critical_branch",
+      "expected": "TRUE_POSITIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0071,
+      "notes": [
+        "Vulnerability not detected (FN)"
+      ]
+    },
+    {
+      "case_id": "case_fi_02_redundant_dual_rail_safe",
+      "expected": "TRUE_NEGATIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0065,
+      "notes": []
+    },
+    {
+      "case_id": "case_ac_01_obf",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.008,
+      "notes": []
+    },
+    {
+      "case_id": "case_rst_01_obf",
+      "expected": "TRUE_POSITIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": true,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0061,
+      "notes": []
+    },
+    {
+      "case_id": "case_ac_03_obf",
+      "expected": "TRUE_NEGATIVE",
+      "detected": true,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0065,
+      "notes": [
+        "Safe design wrongly flagged as PROBABLE (FP)"
+      ]
+    },
+    {
+      "case_id": "case_dbg_01_obf",
+      "expected": "TRUE_POSITIVE",
+      "detected": false,
+      "lane": "PROBABLE",
+      "status": "REACHABLE",
+      "passed": false,
+      "wrong_refutation": false,
+      "runtime_seconds": 0.0073,
+      "notes": [
+        "Vulnerability not detected (FN)"
+      ]
+    }
+  ]
+}

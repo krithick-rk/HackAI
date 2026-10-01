@@ -1,76 +1,28 @@
 import os
 import sys
 import json
-import http.client
 from typing import Dict, Any, List
 from src.soc_analyzer.common.fs_utils import write_json_artifact, read_json_artifact
 from src.soc_analyzer.phase0.tool_validator import validate_tool_for_module
 
 def call_llm_for_repair(prompt: str) -> str:
-    """Queries the LLM using available API keys (Anthropic, Gemini, OpenAI)."""
-    api_keys = {
-        "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
-        "gemini": os.environ.get("GEMINI_API_KEY"),
-        "openai": os.environ.get("OPENAI_API_KEY")
-    }
-
-    response_text = ""
+    """Queries AI via centralized AI Gateway."""
+    from src.soc_analyzer.ai_gateway import AIGateway, TaskType
     try:
-        if api_keys["anthropic"]:
-            conn = http.client.HTTPSConnection("api.anthropic.com")
-            headers = {
-                "x-api-key": api_keys["anthropic"],
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 4000,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            conn.request("POST", "/v1/messages", json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["content"][0]["text"]
-
-        elif api_keys["gemini"]:
-            conn = http.client.HTTPSConnection("generativelanguage.googleapis.com")
-            headers = {"content-type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}]
-            }
-            url = f"/v1beta/models/gemini-2.5-flash:generateContent?key={api_keys['gemini']}"
-            conn.request("POST", url, json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["candidates"][0]["content"]["parts"][0]["text"]
-
-        elif api_keys["openai"]:
-            conn = http.client.HTTPSConnection("api.openai.com")
-            headers = {
-                "Authorization": f"Bearer {api_keys['openai']}",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 4000
-            }
-            conn.request("POST", "/v1/chat/completions", json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["choices"][0]["message"]["content"]
-        else:
-            print("   [LLM Repair] No API key present. Cannot contact LLM.")
-            return ""
-    except Exception as e:
-        print(f"   [LLM Repair] HTTP request failed: {e}")
+        gateway = AIGateway()
+        resp = gateway.call_prompt(
+            task_type=TaskType.EXPLAIN,
+            prompt=prompt,
+            module="failure_repairer",
+        )
+        if resp.is_success and resp.raw_text:
+            return resp.raw_text.strip()
+        if resp.error_message:
+            print(f"   [LLM Repair] AI Gateway: {resp.error_message}")
         return ""
-
-    return response_text.strip()
+    except Exception as e:
+        print(f"   [LLM Repair] Gateway call failed: {e}")
+        return ""
 
 def load_prompt_template() -> str:
     """Resolves and loads the repair prompt template."""

@@ -3,7 +3,6 @@ import sys
 import re
 import json
 import subprocess
-import http.client
 from typing import Dict, Any, List, Set, Tuple
 from src.soc_analyzer.common.fs_utils import write_json_artifact, read_json_artifact
 from src.soc_analyzer.preprocessing.comment_stripper import strip_comments
@@ -14,15 +13,9 @@ SECRET_KEYWORDS = ["key", "secret", "password", "priv", "credential"]
 # LLM Fallback Client
 def call_llm_fallback(module_name: str, files: List[str]) -> Dict[str, Any] | None:
     """
-    Reads the module source files and prompts an LLM to parse them if Python extraction fails.
-    Prioritizes Anthropic, then Gemini, then OpenAI.
+    Reads the module source files and prompts an LLM via AI Gateway to parse them if Python extraction fails.
+    Falls back to Python-only parsing if gateway is unavailable or fails.
     """
-    api_keys = {
-        "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
-        "gemini": os.environ.get("GEMINI_API_KEY"),
-        "openai": os.environ.get("OPENAI_API_KEY")
-    }
-    
     # Read files content
     src_content = ""
     for f in files:
@@ -32,10 +25,10 @@ def call_llm_fallback(module_name: str, files: List[str]) -> Dict[str, Any] | No
                     src_content += f"// File: {os.path.basename(f)}\n" + fh.read() + "\n\n"
             except Exception:
                 pass
-                
+
     if not src_content:
         return None
-        
+
     prompt = f"""You are an expert hardware security engineer. Parse the following SystemVerilog/Verilog source code files for the module '{module_name}' and extract its structural context.
 Return ONLY a valid JSON object matching this schema (do not include markdown wrapping or explanation):
 {{
@@ -56,71 +49,25 @@ Here is the source code:
 {src_content}
 """
 
-    response_text = ""
-    
+    from src.soc_analyzer.ai_gateway import AIGateway, TaskType
     try:
-        if api_keys["anthropic"]:
-            print(f"   [LLM Fallback] Using Anthropic (Claude) for module {module_name}...")
-            conn = http.client.HTTPSConnection("api.anthropic.com")
-            headers = {
-                "x-api-key": api_keys["anthropic"],
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 4000,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            conn.request("POST", "/v1/messages", json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["content"][0]["text"]
-            
-        elif api_keys["gemini"]:
-            print(f"   [LLM Fallback] Using Gemini for module {module_name}...")
-            conn = http.client.HTTPSConnection("generativelanguage.googleapis.com")
-            headers = {"content-type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}]
-            }
-            url = f"/v1beta/models/gemini-2.5-flash:generateContent?key={api_keys['gemini']}"
-            conn.request("POST", url, json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["candidates"][0]["content"]["parts"][0]["text"]
-            
-        elif api_keys["openai"]:
-            print(f"   [LLM Fallback] Using OpenAI for module {module_name}...")
-            conn = http.client.HTTPSConnection("api.openai.com")
-            headers = {
-                "Authorization": f"Bearer {api_keys['openai']}",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 4000
-            }
-            conn.request("POST", "/v1/chat/completions", json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["choices"][0]["message"]["content"]
-        else:
-            print(f"   [LLM Fallback] No API key present. Fallback to Python-only parsing.")
-            return None
-            
-        # Extract JSON from response text
-        match = re.search(r"\{.*\}", response_text, re.DOTALL)
-        if match:
-            return json.loads(match.group(0))
-        return json.loads(response_text)
+        gateway = AIGateway()
+        resp = gateway.call_prompt(
+            task_type=TaskType.BIND,
+            prompt=prompt,
+            module=module_name,
+        )
+        if resp.is_success and resp.parsed_output:
+            return resp.parsed_output
+        elif resp.is_success and resp.raw_text:
+            match = re.search(r"\{.*\}", resp.raw_text, re.DOTALL)
+            if match:
+                return json.loads(match.group(0))
+            return json.loads(resp.raw_text)
     except Exception as e:
-        print(f"   [LLM Fallback] Failed to get response or parse JSON: {e}")
-        return None
+        print(f"   [LLM Fallback] AI Gateway call failed: {e}")
+
+    return None
 
 # Pure Python fallback parser
 def fallback_python_parse(files: List[str], module_name: str) -> Dict[str, Any]:

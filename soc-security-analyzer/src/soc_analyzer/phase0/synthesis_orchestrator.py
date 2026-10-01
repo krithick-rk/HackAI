@@ -3,7 +3,6 @@ import re
 import json
 import subprocess
 import shutil
-import http.client
 import time
 import dataclasses
 from typing import Dict, Any, List
@@ -881,12 +880,6 @@ def preprocess_sv_for_yosys(content: str) -> str:
     return content
 
 def call_llm_for_synthesis_interpretation(module_name: str, log_content: str) -> Dict[str, Any]:
-    api_keys = {
-        "anthropic": os.environ.get("ANTHROPIC_API_KEY"),
-        "gemini": os.environ.get("GEMINI_API_KEY"),
-        "openai": os.environ.get("OPENAI_API_KEY")
-    }
-    
     prompt = f"""You are a hardware security auditing assistant.
 We have run Yosys synthesis on the SystemVerilog module '{module_name}'.
 Below is the synthesis compiler output (stdout/stderr):
@@ -917,55 +910,18 @@ Return ONLY the JSON object. Do not include markdown formatting or explanation.
 """
 
     response_text = ""
+    from src.soc_analyzer.ai_gateway import AIGateway, TaskType
     try:
-        if api_keys["anthropic"]:
-            conn = http.client.HTTPSConnection("api.anthropic.com")
-            headers = {
-                "x-api-key": api_keys["anthropic"],
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "claude-3-5-sonnet-20240620",
-                "max_tokens": 4000,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            conn.request("POST", "/v1/messages", json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["content"][0]["text"]
-
-        elif api_keys["gemini"]:
-            conn = http.client.HTTPSConnection("generativelanguage.googleapis.com")
-            headers = {"content-type": "application/json"}
-            payload = {
-                "contents": [{"parts": [{"text": prompt}]}]
-            }
-            url = f"/v1beta/models/gemini-2.5-flash:generateContent?key={api_keys['gemini']}"
-            conn.request("POST", url, json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["candidates"][0]["content"]["parts"][0]["text"]
-
-        elif api_keys["openai"]:
-            conn = http.client.HTTPSConnection("api.openai.com")
-            headers = {
-                "Authorization": f"Bearer {api_keys['openai']}",
-                "content-type": "application/json"
-            }
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 4000
-            }
-            conn.request("POST", "/v1/chat/completions", json.dumps(payload), headers)
-            res = conn.getresponse()
-            data = res.read().decode("utf-8")
-            resp_obj = json.loads(data)
-            response_text = resp_obj["choices"][0]["message"]["content"]
-            
+        gateway = AIGateway()
+        resp = gateway.call_prompt(
+            task_type=TaskType.EXPLAIN,
+            prompt=prompt,
+            module=module_name,
+        )
+        if resp.is_success and resp.parsed_output:
+            return resp.parsed_output
+        elif resp.is_success and resp.raw_text:
+            response_text = resp.raw_text
     except Exception as e:
         print(f"Error during AI interpretation request: {e}")
         

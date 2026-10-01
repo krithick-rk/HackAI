@@ -1,0 +1,93 @@
+assets:
+  - id: ASSET_CTRL_REGWEN
+    name: CTRL_AUX_REGWEN
+    asset_type: SECURITY_CONFIG_REG
+    sensitivity: HIGH
+    source_path: "reg:CTRL_AUX_REGWEN"
+    security_boundary: "ip_boundary"
+    allowed_observers:
+      - SW_PRIV
+    allowed_writers:
+      - SW_PRIV
+    safe_default_value: "0x1"
+    register_metadata:
+      reg_name: "CTRL_AUX_REGWEN"
+      address_offset: "0x04"
+      swaccess: "rw0c"
+      hwaccess: "hro"
+      regwen: null
+      resval: "1"
+      shadowed: false
+      fields:
+        - bits: "0"
+          name: "EN"
+          desc: "Auxiliary control write-enable lock"
+          swaccess: "rw0c"
+          resval: "1"
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/assets.yaml"
+      author: "security_architect"
+      description: "Hardware write-enable lock for critical control settings"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: ASSET_AES_KEY
+    name: AES_ROOT_KEY
+    asset_type: KEY
+    sensitivity: CRITICAL
+    source_path: "hw.ip.aes.key"
+    security_boundary: "crypto_core"
+    allowed_observers: []
+    allowed_writers:
+      - SW_PRIV
+    safe_default_value: "0x0"
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/assets.yaml"
+      author: "security_architect"
+      description: "Hardware cryptographic root key material"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: ASSET_LC_STATE
+    name: LIFECYCLE_STATE
+    asset_type: LIFECYCLE_STATE
+    sensitivity: CRITICAL
+    source_path: "hw.ip.lc_ctrl.state"
+    security_boundary: "otp_lc"
+    allowed_observers:
+      - SW_PRIV
+      - DEBUG_AUTH
+    allowed_writers: []
+    safe_default_value: "PROD"
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/assets.yaml"
+      author: "security_architect"
+      description: "Silicon lifecycle state controller encoding"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"
+
+  - id: ASSET_DEBUG_EN
+    name: HARDWARE_DEBUG_ENABLE
+    asset_type: DEBUG_CONTROL
+    sensitivity: HIGH
+    source_path: "hw.ip.pinmux.debug_en"
+    security_boundary: "debug_subsystem"
+    allowed_observers:
+      - DEBUG_AUTH
+    allowed_writers:
+      - DEBUG_AUTH
+    safe_default_value: "0x0"
+    provenance:
+      provenance_type: CONFIG
+      source: "config/registries/assets.yaml"
+      author: "security_architect"
+      description: "Dynamic hardware JTAG/scan debug authorization signal"
+    approval_status: APPROVED
+    enabled: true
+    version: "1.0"

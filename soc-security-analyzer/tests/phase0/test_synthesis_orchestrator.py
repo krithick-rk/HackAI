@@ -73,25 +73,15 @@ def test_synthesize_module_happy_path(mock_popen):
         assert os.path.exists(os.path.join(module_dir, "synthesis_status.json"))
         assert os.path.exists(os.path.join(module_dir, "synthesis.log"))
 
-@patch("http.client.HTTPSConnection")
-def test_call_llm_for_synthesis_interpretation_gemini(mock_conn_cls):
-    os.environ["GEMINI_API_KEY"] = "fake_gemini_key"
-    
-    mock_conn = MagicMock()
-    mock_res = MagicMock()
-    mock_res.read.return_value = json.dumps({
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "text": '{"module": "my_mod", "risk_level": "HIGH", "security_warnings": []}'
-                }]
-            }
-        }]
-    }).encode("utf-8")
-    mock_conn.getresponse.return_value = mock_res
-    mock_conn_cls.return_value = mock_conn
-    
+@patch("src.soc_analyzer.ai_gateway.AIGateway.call_prompt")
+def test_call_llm_for_synthesis_interpretation_gemini(mock_call):
+    from src.soc_analyzer.ai_gateway import GatewayResponse, GatewayOutcome
+    mock_call.return_value = GatewayResponse(
+        task_id="test",
+        outcome=GatewayOutcome.SUCCESS,
+        parsed_output={"module": "my_mod", "risk_level": "HIGH", "security_warnings": []}
+    )
+
     res = call_llm_for_synthesis_interpretation("my_mod", "some logs")
     assert res["risk_level"] == "HIGH"
-    
-    del os.environ["GEMINI_API_KEY"]
+

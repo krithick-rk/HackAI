@@ -1,0 +1,1529 @@
+{
+  "schema_version": "2.0.0",
+  "run": {
+    "run_id": "run_396db3ae",
+    "repository": "fixtures/sample_rtl/",
+    "source_snapshot_hash": "97d29cd56e06e585",
+    "configuration": "default",
+    "top": "module_with_nested_blocks",
+    "start_time": "2026-10-01T06:28:43.470061+00:00",
+    "end_time": "2026-10-01T06:28:43.487420+00:00",
+    "status": "COMPLETED",
+    "tool_versions": {
+      "slang": "available",
+      "z3": "5.1.0",
+      "verilator": "5.048",
+      "yosys": "available"
+    },
+    "analyzability_summary": {
+      "normal": 4,
+      "degraded": 1,
+      "highly_obfuscated": 0
+    },
+    "finding_summary": {
+      "CONFIRMED": 0,
+      "PROBABLE": 8,
+      "LEAD": 0,
+      "WEAKNESS_ONLY": 0
+    },
+    "cost_summary": {
+      "api_status": "DISABLED",
+      "run_budget_usd": 0.0,
+      "spent_usd": 0.0,
+      "remaining_usd": 0.0,
+      "terminal_calls": 8,
+      "api_calls": 0,
+      "cache_hits": 0
+    },
+    "artifact_directory": "reports/fixture_scan",
+    "metadata": {}
+  },
+  "configuration": {
+    "active_config": "default",
+    "top": "module_with_nested_blocks",
+    "repository": "fixtures/sample_rtl/"
+  },
+  "analyzability": {
+    "summary": {
+      "normal": 4,
+      "degraded": 1,
+      "highly_obfuscated": 0
+    },
+    "modules": {
+      "module_with_nested_blocks": {
+        "level": "NORMAL",
+        "overall_score": 0.72,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 1.0,
+          "black_box_freedom": 1.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "Classified as NORMAL (score 0.72)"
+        ]
+      },
+      "module_with_keyword_comment": {
+        "level": "DEGRADED",
+        "overall_score": 0.57,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 1.0,
+          "black_box_freedom": 0.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "High black-box/opaque ratio (1.00)",
+          "Classified as DEGRADED (score 0.57 < 0.70)"
+        ]
+      },
+      "module_with_inline_code_comment": {
+        "level": "NORMAL",
+        "overall_score": 0.72,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 1.0,
+          "black_box_freedom": 1.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "Classified as NORMAL (score 0.72)"
+        ]
+      },
+      "module_with_string_lit": {
+        "level": "NORMAL",
+        "overall_score": 0.72,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 1.0,
+          "black_box_freedom": 1.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "Classified as NORMAL (score 0.72)"
+        ]
+      },
+      "module_with_no_keyword_comment": {
+        "level": "NORMAL",
+        "overall_score": 0.72,
+        "metrics": {
+          "elaboration_score": 0.2,
+          "identifier_informativeness": 1.0,
+          "hierarchy_preservation": 1.0,
+          "black_box_freedom": 1.0
+        },
+        "details": [
+          "Elaboration errors detected",
+          "Classified as NORMAL (score 0.72)"
+        ]
+      }
+    },
+    "obfuscation_notice": "Semantic AI coverage is reduced in degraded/obfuscated regions; absence of AI finding does not imply cleanliness."
+  },
+  "findings": [
+    {
+      "finding_id": "fnd_3fe615d264",
+      "title": "Security register 'module_with_nested_blocks.out' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'module_with_nested_blocks.out' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_nested_blocks.out",
+      "configuration": "default",
+      "asset": "module_with_nested_blocks.out",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_9d25e02891",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_nested_blocks.out:security_sink",
+          "nodes": {
+            "module_with_nested_blocks.out:security_sink": {
+              "node_id": "module_with_nested_blocks.out:security_sink",
+              "instance_path": "module_with_nested_blocks.out",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_nested_blocks.out:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "5d38839682a8dfbe",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.483377+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_801cd15b",
+          "evidence_type": "REGISTRY",
+          "producer": "module_with_nested_blocks.out",
+          "artifact_reference": "module_with_nested_blocks.out",
+          "hash": "module_with_nested_blocks.out",
+          "configuration": "default",
+          "instance_path": "module_with_nested_blocks.out",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.483590+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_c7e64ffc",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "5d38839682a8dfbe",
+          "hash": "5d38839682a8dfbe",
+          "configuration": "default",
+          "instance_path": "module_with_nested_blocks.out",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.483603+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_nested_blocks.out",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "fixtures/sample_rtl/module_with_nested_blocks.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.483633+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "module_with_nested_blocks.out",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_9d25e02891",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_nested_blocks.out:security_sink",
+            "nodes": {
+              "module_with_nested_blocks.out:security_sink": {
+                "node_id": "module_with_nested_blocks.out:security_sink",
+                "instance_path": "module_with_nested_blocks.out",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_nested_blocks.out:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "5d38839682a8dfbe",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.483377+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_bd7e7c6bb9",
+      "title": "Security register 'module_with_keyword_comment.key_data' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'module_with_keyword_comment.key_data' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_keyword_comment.key_data",
+      "configuration": "default",
+      "asset": "module_with_keyword_comment.key_data",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_0fd1fe13e9",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_keyword_comment.key_data:security_sink",
+          "nodes": {
+            "module_with_keyword_comment.key_data:security_sink": {
+              "node_id": "module_with_keyword_comment.key_data:security_sink",
+              "instance_path": "module_with_keyword_comment.key_data",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_keyword_comment.key_data:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "c6e750b767e490c7",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.484488+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_afdb856b",
+          "evidence_type": "REGISTRY",
+          "producer": "module_with_keyword_comment.key_data",
+          "artifact_reference": "module_with_keyword_comment.key_data",
+          "hash": "module_with_keyword_comment.key_data",
+          "configuration": "default",
+          "instance_path": "module_with_keyword_comment.key_data",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.484583+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_e1db12b7",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "c6e750b767e490c7",
+          "hash": "c6e750b767e490c7",
+          "configuration": "default",
+          "instance_path": "module_with_keyword_comment.key_data",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.484588+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_keyword_comment.key_data",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_keyword_comment.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.484602+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "module_with_keyword_comment.key_data",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_0fd1fe13e9",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_keyword_comment.key_data:security_sink",
+            "nodes": {
+              "module_with_keyword_comment.key_data:security_sink": {
+                "node_id": "module_with_keyword_comment.key_data:security_sink",
+                "instance_path": "module_with_keyword_comment.key_data",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_keyword_comment.key_data:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "c6e750b767e490c7",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.484488+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_6c978ead5a",
+      "title": "Security register 'module_with_inline_code_comment.sec_reg' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'module_with_inline_code_comment.sec_reg' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_inline_code_comment.sec_reg",
+      "configuration": "default",
+      "asset": "module_with_inline_code_comment.sec_reg",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_680353b65f",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_inline_code_comment.sec_reg:security_sink",
+          "nodes": {
+            "module_with_inline_code_comment.sec_reg:security_sink": {
+              "node_id": "module_with_inline_code_comment.sec_reg:security_sink",
+              "instance_path": "module_with_inline_code_comment.sec_reg",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_inline_code_comment.sec_reg:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "d6088e49d6238164",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.484930+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_c5e3bba4",
+          "evidence_type": "REGISTRY",
+          "producer": "module_with_inline_code_comment.sec_reg",
+          "artifact_reference": "module_with_inline_code_comment.sec_reg",
+          "hash": "module_with_inline_code_comment.sec_reg",
+          "configuration": "default",
+          "instance_path": "module_with_inline_code_comment.sec_reg",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.484979+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_d861d5a5",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "d6088e49d6238164",
+          "hash": "d6088e49d6238164",
+          "configuration": "default",
+          "instance_path": "module_with_inline_code_comment.sec_reg",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.484983+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_inline_code_comment.sec_reg",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_inline_code_comment.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.484990+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "module_with_inline_code_comment.sec_reg",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_680353b65f",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_inline_code_comment.sec_reg:security_sink",
+            "nodes": {
+              "module_with_inline_code_comment.sec_reg:security_sink": {
+                "node_id": "module_with_inline_code_comment.sec_reg:security_sink",
+                "instance_path": "module_with_inline_code_comment.sec_reg",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_inline_code_comment.sec_reg:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "d6088e49d6238164",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.484930+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_eb3d2e5a7b",
+      "title": "Security register 'module_with_string_lit.sec_reg' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'module_with_string_lit.sec_reg' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_string_lit.sec_reg",
+      "configuration": "default",
+      "asset": "module_with_string_lit.sec_reg",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_5f3faca1df",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_string_lit.sec_reg:security_sink",
+          "nodes": {
+            "module_with_string_lit.sec_reg:security_sink": {
+              "node_id": "module_with_string_lit.sec_reg:security_sink",
+              "instance_path": "module_with_string_lit.sec_reg",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_string_lit.sec_reg:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "7884aec6cb206ec1",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.485245+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_d99a9900",
+          "evidence_type": "REGISTRY",
+          "producer": "module_with_string_lit.sec_reg",
+          "artifact_reference": "module_with_string_lit.sec_reg",
+          "hash": "module_with_string_lit.sec_reg",
+          "configuration": "default",
+          "instance_path": "module_with_string_lit.sec_reg",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.485289+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_494136b4",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "7884aec6cb206ec1",
+          "hash": "7884aec6cb206ec1",
+          "configuration": "default",
+          "instance_path": "module_with_string_lit.sec_reg",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.485292+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_string_lit.sec_reg",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_string_lit.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.485299+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "module_with_string_lit.sec_reg",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_5f3faca1df",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_string_lit.sec_reg:security_sink",
+            "nodes": {
+              "module_with_string_lit.sec_reg:security_sink": {
+                "node_id": "module_with_string_lit.sec_reg:security_sink",
+                "instance_path": "module_with_string_lit.sec_reg",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_string_lit.sec_reg:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "7884aec6cb206ec1",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.485245+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_d5f5f8533d",
+      "title": "Security register 'module_with_no_keyword_comment.out' lacks hardware regwen write lock",
+      "weakness_class": "MISSING_REGWEN",
+      "severity": "CRITICAL",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Writable security register 'module_with_no_keyword_comment.out' lacks hardware regwen write protection, allowing software with bus write capability to modify sensitive state directly.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_no_keyword_comment.out",
+      "configuration": "default",
+      "asset": "module_with_no_keyword_comment.out",
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_37a3b75c85",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_no_keyword_comment.out:security_sink",
+          "nodes": {
+            "module_with_no_keyword_comment.out:security_sink": {
+              "node_id": "module_with_no_keyword_comment.out:security_sink",
+              "instance_path": "module_with_no_keyword_comment.out",
+              "signal_name": "security_sink",
+              "definition_id": null,
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_no_keyword_comment.out:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "b51e9ac890d76b38",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.485783+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1234",
+      "evidence": [
+        {
+          "evidence_id": "ev_308177c5",
+          "evidence_type": "REGISTRY",
+          "producer": "module_with_no_keyword_comment.out",
+          "artifact_reference": "module_with_no_keyword_comment.out",
+          "hash": "module_with_no_keyword_comment.out",
+          "configuration": "default",
+          "instance_path": "module_with_no_keyword_comment.out",
+          "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.485870+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_0bf7206a",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "b51e9ac890d76b38",
+          "hash": "b51e9ac890d76b38",
+          "configuration": "default",
+          "instance_path": "module_with_no_keyword_comment.out",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.485878+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_no_keyword_comment.out",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.485892+00:00"
+        }
+      ],
+      "metadata": {
+        "asset_id": "module_with_no_keyword_comment.out",
+        "swaccess": "rw",
+        "reachability": {
+          "candidate_id": "cand_37a3b75c85",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_no_keyword_comment.out:security_sink",
+            "nodes": {
+              "module_with_no_keyword_comment.out:security_sink": {
+                "node_id": "module_with_no_keyword_comment.out:security_sink",
+                "instance_path": "module_with_no_keyword_comment.out",
+                "signal_name": "security_sink",
+                "definition_id": null,
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_no_keyword_comment.out:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "b51e9ac890d76b38",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.485783+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_8dd4371ce2",
+      "title": "Clocked security module 'module_with_keyword_comment' defines no reset signals",
+      "weakness_class": "MISSING_RESET",
+      "severity": "MEDIUM",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Module 'module_with_keyword_comment' contains sequential clock domains and security assets but lacks reset signals, risking uninitialized security state on power-up.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_keyword_comment",
+      "configuration": "default",
+      "asset": null,
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_9faf2b91a7",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_keyword_comment:security_sink",
+          "nodes": {
+            "module_with_keyword_comment:security_sink": {
+              "node_id": "module_with_keyword_comment:security_sink",
+              "instance_path": "module_with_keyword_comment",
+              "signal_name": "security_sink",
+              "definition_id": "module_with_keyword_comment",
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_keyword_comment:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "3f11e2edcf016359",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.486286+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1271",
+      "evidence": [
+        {
+          "evidence_id": "ev_2b1a2b8f",
+          "evidence_type": "DESIGN_DB",
+          "producer": "module_with_keyword_comment",
+          "artifact_reference": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_keyword_comment.sv",
+          "hash": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_keyword_comment.sv",
+          "configuration": "default",
+          "instance_path": "module_with_keyword_comment",
+          "description": "Clock declared: clk; Resets: 0",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.486347+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_970b6adf",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "3f11e2edcf016359",
+          "hash": "3f11e2edcf016359",
+          "configuration": "default",
+          "instance_path": "module_with_keyword_comment",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.486354+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_keyword_comment",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_keyword_comment.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.486363+00:00"
+        }
+      ],
+      "metadata": {
+        "reachability": {
+          "candidate_id": "cand_9faf2b91a7",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_keyword_comment:security_sink",
+            "nodes": {
+              "module_with_keyword_comment:security_sink": {
+                "node_id": "module_with_keyword_comment:security_sink",
+                "instance_path": "module_with_keyword_comment",
+                "signal_name": "security_sink",
+                "definition_id": "module_with_keyword_comment",
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_keyword_comment:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "3f11e2edcf016359",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.486286+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_ffb10b3fcd",
+      "title": "Clocked security module 'module_with_inline_code_comment' defines no reset signals",
+      "weakness_class": "MISSING_RESET",
+      "severity": "MEDIUM",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Module 'module_with_inline_code_comment' contains sequential clock domains and security assets but lacks reset signals, risking uninitialized security state on power-up.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_inline_code_comment",
+      "configuration": "default",
+      "asset": null,
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_aa38bb4f58",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_inline_code_comment:security_sink",
+          "nodes": {
+            "module_with_inline_code_comment:security_sink": {
+              "node_id": "module_with_inline_code_comment:security_sink",
+              "instance_path": "module_with_inline_code_comment",
+              "signal_name": "security_sink",
+              "definition_id": "module_with_inline_code_comment",
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_inline_code_comment:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "793dd8bfe2bf7ca0",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.486657+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1271",
+      "evidence": [
+        {
+          "evidence_id": "ev_b78267e8",
+          "evidence_type": "DESIGN_DB",
+          "producer": "module_with_inline_code_comment",
+          "artifact_reference": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_inline_code_comment.sv",
+          "hash": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_inline_code_comment.sv",
+          "configuration": "default",
+          "instance_path": "module_with_inline_code_comment",
+          "description": "Clock declared: clk; Resets: 0",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.486708+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_eb25efa3",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "793dd8bfe2bf7ca0",
+          "hash": "793dd8bfe2bf7ca0",
+          "configuration": "default",
+          "instance_path": "module_with_inline_code_comment",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.486711+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_inline_code_comment",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_inline_code_comment.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.486718+00:00"
+        }
+      ],
+      "metadata": {
+        "reachability": {
+          "candidate_id": "cand_aa38bb4f58",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_inline_code_comment:security_sink",
+            "nodes": {
+              "module_with_inline_code_comment:security_sink": {
+                "node_id": "module_with_inline_code_comment:security_sink",
+                "instance_path": "module_with_inline_code_comment",
+                "signal_name": "security_sink",
+                "definition_id": "module_with_inline_code_comment",
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_inline_code_comment:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "793dd8bfe2bf7ca0",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.486657+00:00"
+        }
+      }
+    },
+    {
+      "finding_id": "fnd_06f1125bf4",
+      "title": "Clocked security module 'module_with_no_keyword_comment' defines no reset signals",
+      "weakness_class": "MISSING_RESET",
+      "severity": "MEDIUM",
+      "status": "PROBABLE",
+      "lane": "PROBABLE",
+      "source": "Module 'module_with_no_keyword_comment' contains sequential clock domains and security assets but lacks reset signals, risking uninitialized security state on power-up.",
+      "line_range": [
+        1,
+        1
+      ],
+      "instance_path": "module_with_no_keyword_comment",
+      "configuration": "default",
+      "asset": null,
+      "attacker": null,
+      "reachability": {
+        "candidate_id": "cand_3999baeea2",
+        "result": "SAT",
+        "solver": "z3",
+        "solver_version": "5.1.0",
+        "path_condition": {
+          "op": "CONSTANT",
+          "value": 1
+        },
+        "z3_expression_summary": "True",
+        "assumptions": [
+          "no_authoritative_attacker_assumptions"
+        ],
+        "provenance_chain": {
+          "sink_node_id": "module_with_no_keyword_comment:security_sink",
+          "nodes": {
+            "module_with_no_keyword_comment:security_sink": {
+              "node_id": "module_with_no_keyword_comment:security_sink",
+              "instance_path": "module_with_no_keyword_comment",
+              "signal_name": "security_sink",
+              "definition_id": "module_with_no_keyword_comment",
+              "direction": "internal",
+              "source_kind": "UNKNOWN",
+              "source_reference": null,
+              "security_role": "sink",
+              "metadata": {}
+            }
+          },
+          "edges": [],
+          "root_sources": [
+            "module_with_no_keyword_comment:security_sink"
+          ]
+        },
+        "unknown_reasons": [],
+        "model_hash": "aa389055f5dcc4df",
+        "witness_assignment": {},
+        "is_model_complete": true,
+        "configuration": "default",
+        "timestamp": "2026-10-01T06:28:43.487040+00:00"
+      },
+      "witness": [],
+      "cwe": "CWE-1271",
+      "evidence": [
+        {
+          "evidence_id": "ev_645c5915",
+          "evidence_type": "DESIGN_DB",
+          "producer": "module_with_no_keyword_comment",
+          "artifact_reference": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+          "hash": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+          "configuration": "default",
+          "instance_path": "module_with_no_keyword_comment",
+          "description": "Clock declared: clk; Resets: 0",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.487092+00:00",
+          "metadata": {}
+        },
+        {
+          "evidence_id": "ev_c70a4b68",
+          "evidence_type": "DESIGN_DB",
+          "producer": "reachability.z3",
+          "artifact_reference": "aa389055f5dcc4df",
+          "hash": "aa389055f5dcc4df",
+          "configuration": "default",
+          "instance_path": "module_with_no_keyword_comment",
+          "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+          "verification_status": "VERIFIED",
+          "created_at": "2026-10-01T06:28:43.487095+00:00",
+          "metadata": {}
+        }
+      ],
+      "reasons": [
+        "NO_WITNESS"
+      ],
+      "manifestations": [
+        {
+          "instance_path": "module_with_no_keyword_comment",
+          "configuration": "default",
+          "line_range": [
+            1,
+            1
+          ],
+          "file_path": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+          "deviating_attributes": {},
+          "first_seen": "2026-10-01T06:28:43.487102+00:00"
+        }
+      ],
+      "metadata": {
+        "reachability": {
+          "candidate_id": "cand_3999baeea2",
+          "result": "SAT",
+          "solver": "z3",
+          "solver_version": "5.1.0",
+          "path_condition": {
+            "op": "CONSTANT",
+            "value": 1
+          },
+          "z3_expression_summary": "True",
+          "assumptions": [
+            "no_authoritative_attacker_assumptions"
+          ],
+          "provenance_chain": {
+            "sink_node_id": "module_with_no_keyword_comment:security_sink",
+            "nodes": {
+              "module_with_no_keyword_comment:security_sink": {
+                "node_id": "module_with_no_keyword_comment:security_sink",
+                "instance_path": "module_with_no_keyword_comment",
+                "signal_name": "security_sink",
+                "definition_id": "module_with_no_keyword_comment",
+                "direction": "internal",
+                "source_kind": "UNKNOWN",
+                "source_reference": null,
+                "security_role": "sink",
+                "metadata": {}
+              }
+            },
+            "edges": [],
+            "root_sources": [
+              "module_with_no_keyword_comment:security_sink"
+            ]
+          },
+          "unknown_reasons": [],
+          "model_hash": "aa389055f5dcc4df",
+          "witness_assignment": {},
+          "is_model_complete": true,
+          "configuration": "default",
+          "timestamp": "2026-10-01T06:28:43.487040+00:00"
+        }
+      }
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_801cd15b",
+      "evidence_type": "REGISTRY",
+      "producer": "module_with_nested_blocks.out",
+      "artifact_reference": "module_with_nested_blocks.out",
+      "hash": "module_with_nested_blocks.out",
+      "configuration": "default",
+      "instance_path": "module_with_nested_blocks.out",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.483590+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_c7e64ffc",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "5d38839682a8dfbe",
+      "hash": "5d38839682a8dfbe",
+      "configuration": "default",
+      "instance_path": "module_with_nested_blocks.out",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.483603+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_afdb856b",
+      "evidence_type": "REGISTRY",
+      "producer": "module_with_keyword_comment.key_data",
+      "artifact_reference": "module_with_keyword_comment.key_data",
+      "hash": "module_with_keyword_comment.key_data",
+      "configuration": "default",
+      "instance_path": "module_with_keyword_comment.key_data",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.484583+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_e1db12b7",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "c6e750b767e490c7",
+      "hash": "c6e750b767e490c7",
+      "configuration": "default",
+      "instance_path": "module_with_keyword_comment.key_data",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.484588+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_c5e3bba4",
+      "evidence_type": "REGISTRY",
+      "producer": "module_with_inline_code_comment.sec_reg",
+      "artifact_reference": "module_with_inline_code_comment.sec_reg",
+      "hash": "module_with_inline_code_comment.sec_reg",
+      "configuration": "default",
+      "instance_path": "module_with_inline_code_comment.sec_reg",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.484979+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_d861d5a5",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "d6088e49d6238164",
+      "hash": "d6088e49d6238164",
+      "configuration": "default",
+      "instance_path": "module_with_inline_code_comment.sec_reg",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.484983+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_d99a9900",
+      "evidence_type": "REGISTRY",
+      "producer": "module_with_string_lit.sec_reg",
+      "artifact_reference": "module_with_string_lit.sec_reg",
+      "hash": "module_with_string_lit.sec_reg",
+      "configuration": "default",
+      "instance_path": "module_with_string_lit.sec_reg",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.485289+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_494136b4",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "7884aec6cb206ec1",
+      "hash": "7884aec6cb206ec1",
+      "configuration": "default",
+      "instance_path": "module_with_string_lit.sec_reg",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.485292+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_308177c5",
+      "evidence_type": "REGISTRY",
+      "producer": "module_with_no_keyword_comment.out",
+      "artifact_reference": "module_with_no_keyword_comment.out",
+      "hash": "module_with_no_keyword_comment.out",
+      "configuration": "default",
+      "instance_path": "module_with_no_keyword_comment.out",
+      "description": "Asset swaccess='rw', sensitivity='CRITICAL', regwen=None",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.485870+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_0bf7206a",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "b51e9ac890d76b38",
+      "hash": "b51e9ac890d76b38",
+      "configuration": "default",
+      "instance_path": "module_with_no_keyword_comment.out",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.485878+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_2b1a2b8f",
+      "evidence_type": "DESIGN_DB",
+      "producer": "module_with_keyword_comment",
+      "artifact_reference": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_keyword_comment.sv",
+      "hash": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_keyword_comment.sv",
+      "configuration": "default",
+      "instance_path": "module_with_keyword_comment",
+      "description": "Clock declared: clk; Resets: 0",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.486347+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_970b6adf",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "3f11e2edcf016359",
+      "hash": "3f11e2edcf016359",
+      "configuration": "default",
+      "instance_path": "module_with_keyword_comment",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.486354+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_b78267e8",
+      "evidence_type": "DESIGN_DB",
+      "producer": "module_with_inline_code_comment",
+      "artifact_reference": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_inline_code_comment.sv",
+      "hash": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_inline_code_comment.sv",
+      "configuration": "default",
+      "instance_path": "module_with_inline_code_comment",
+      "description": "Clock declared: clk; Resets: 0",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.486708+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_eb25efa3",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "793dd8bfe2bf7ca0",
+      "hash": "793dd8bfe2bf7ca0",
+      "configuration": "default",
+      "instance_path": "module_with_inline_code_comment",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.486711+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_645c5915",
+      "evidence_type": "DESIGN_DB",
+      "producer": "module_with_no_keyword_comment",
+      "artifact_reference": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+      "hash": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+      "configuration": "default",
+      "instance_path": "module_with_no_keyword_comment",
+      "description": "Clock declared: clk; Resets: 0",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.487092+00:00",
+      "metadata": {}
+    },
+    {
+      "evidence_id": "ev_c70a4b68",
+      "evidence_type": "DESIGN_DB",
+      "producer": "reachability.z3",
+      "artifact_reference": "aa389055f5dcc4df",
+      "hash": "aa389055f5dcc4df",
+      "configuration": "default",
+      "instance_path": "module_with_no_keyword_comment",
+      "description": "Formal Z3 Reachability: SAT [complete=True, config=default]. Assumptions: [no_authoritative_attacker_assumptions]. Unknowns: [none].",
+      "verification_status": "VERIFIED",
+      "created_at": "2026-10-01T06:28:43.487095+00:00",
+      "metadata": {}
+    }
+  ],
+  "witnesses": [],
+  "cost": {
+    "api_status": "DISABLED",
+    "run_budget_usd": 0.0,
+    "spent_usd": 0.0,
+    "remaining_usd": 0.0,
+    "terminal_calls": 8,
+    "api_calls": 0,
+    "cache_hits": 0
+  },
+  "runtime": {
+    "start_time": "2026-10-01T06:28:43.470061+00:00",
+    "end_time": "2026-10-01T06:28:43.487420+00:00"
+  },
+  "coverage": {
+    "total_modules": 5,
+    "analyzed_modules": 5
+  },
+  "benchmark_references": {},
+  "audit_references": {}
+}
