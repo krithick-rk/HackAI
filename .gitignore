@@ -3,4 +3,3 @@ workspace/
 __pycache__/
 build/
 *.egg-info/
-node_modules/
