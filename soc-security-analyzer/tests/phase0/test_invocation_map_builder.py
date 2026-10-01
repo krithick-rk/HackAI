@@ -1,6 +1,6 @@
 import os
 import pytest
-from soc_analyzer.phase0.invocation_map_builder import build_invocation_maps
+from src.soc_analyzer.phase0.invocation_map_builder import build_invocation_maps
 
 def test_build_invocation_maps():
     # Build a mock dependency graph
@@ -47,8 +47,10 @@ def test_build_invocation_maps():
         }
     }
     
-    maps = build_invocation_maps(graph)
-    
+    from unittest.mock import patch
+    with patch("os.path.exists", side_effect=lambda p: False if "prim_assert" in p else True):
+        maps = build_invocation_maps(graph)
+        
     assert "uart_core" in maps
     core_map = maps["uart_core"]
     

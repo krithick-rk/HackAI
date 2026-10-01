@@ -1,7 +1,7 @@
 import os
 import tempfile
 import pytest
-from soc_analyzer.phase0.dependency_scanner import scan_dependencies
+from src.soc_analyzer.phase0.dependency_scanner import scan_dependencies
 
 def test_dependency_scanner_simple():
     # Create temp files representing design modules

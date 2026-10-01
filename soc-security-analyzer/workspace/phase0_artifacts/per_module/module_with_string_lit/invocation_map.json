@@ -2,32 +2,43 @@
   "module": "module_with_string_lit",
   "slang": {
     "base_command": "slang --lint-only",
-    "files": [],
+    "files": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv",
+      "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_string_lit.sv"
+    ],
     "include_paths": [],
     "required_companions": [],
     "stubs_required": [],
-    "status": "TOOL_UNAVAILABLE",
-    "validation_output_summary": "Tool binary not found in PATH",
+    "status": "VALIDATED",
+    "validation_output_summary": "Clean compilation with no warnings/errors",
     "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
   },
   "verilator": {
     "base_command": "verilator --lint-only -Wall",
-    "files": [],
-    "include_paths": [],
+    "files": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv",
+      "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_string_lit.sv"
+    ],
+    "include_paths": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl"
+    ],
     "required_companions": [],
     "stubs_required": [],
-    "status": "TOOL_UNAVAILABLE",
-    "validation_output_summary": "Tool binary not found in PATH",
+    "status": "PARTIAL",
+    "validation_output_summary": "Validated with 1 warning(s)",
     "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
   },
   "verible": {
     "base_command": "verible-verilog-lint",
-    "files": [],
+    "files": [
+      "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv",
+      "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_string_lit.sv"
+    ],
     "include_paths": [],
     "required_companions": [],
     "stubs_required": [],
-    "status": "TOOL_UNAVAILABLE",
-    "validation_output_summary": "Tool binary not found in PATH",
+    "status": "VALIDATED",
+    "validation_output_summary": "Clean compilation with no warnings/errors",
     "worker_note": "base_command is a validated starting point \u2014 worker may add or change flags as analysis requires. Include paths and companion files must be preserved."
   }
 }

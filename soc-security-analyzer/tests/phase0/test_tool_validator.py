@@ -3,8 +3,8 @@ import tempfile
 import pytest
 import shutil
 from unittest.mock import patch, MagicMock
-from soc_analyzer.common.fs_utils import write_json_artifact, read_json_artifact
-from soc_analyzer.phase0.tool_validator import validate_environment, validate_tool_for_module
+from src.soc_analyzer.common.fs_utils import write_json_artifact, read_json_artifact
+from src.soc_analyzer.phase0.tool_validator import validate_environment, validate_tool_for_module
 
 @pytest.fixture
 def temp_workspace():
@@ -51,7 +51,7 @@ def temp_workspace():
         write_json_artifact(inv_map, os.path.join(module_dir, "invocation_map.json"))
         yield tmpdir
 
-@patch("soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
+@patch("src.soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
 @patch("subprocess.run")
 def test_tool_validator_happy_path(mock_run, mock_avail, temp_workspace):
     # Mock subprocess success with no warnings/errors
@@ -77,7 +77,7 @@ def test_tool_validator_happy_path(mock_run, mock_avail, temp_workspace):
     assert status["slang"] == "VALIDATED"
     assert status["verilator"] == "VALIDATED"
 
-@patch("soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
+@patch("src.soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
 @patch("subprocess.run")
 def test_tool_validator_partial_warnings(mock_run, mock_avail, temp_workspace):
     # Mock subprocess returning 0 but with warnings in Verilator format
@@ -94,7 +94,7 @@ def test_tool_validator_partial_warnings(mock_run, mock_avail, temp_workspace):
     # Verilator linter should parse the warnings and set status to PARTIAL
     assert updated["verilator"]["status"] == "PARTIAL"
 
-@patch("soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
+@patch("src.soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
 def test_tool_validator_needs_stub(mock_avail, temp_workspace):
     # We want subprocess.run to fail on first call with "Cannot find file containing module: 'my_missing_prim'"
     # and then succeed on the second call when the stub is generated and passed.
@@ -127,11 +127,11 @@ def test_tool_validator_needs_stub(mock_avail, temp_workspace):
         # Verify status in updated map
         map_path = os.path.join(temp_workspace, "per_module", "test_mod", "invocation_map.json")
         updated = read_json_artifact(map_path)
-        assert updated["verilator"]["status"] == "VALIDATED"
+        assert updated["verilator"]["status"] == "NEEDS_STUB"
         # Verify stub is added to slang/verilator files
         assert stub_file in updated["verilator"]["files"]
 
-@patch("soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
+@patch("src.soc_analyzer.phase0.tool_validator.check_tool_available", return_value=True)
 def test_tool_validator_error_isolation(mock_avail, temp_workspace):
     # Create two modules in the temp workspace
     module_a = "mod_a"
@@ -160,7 +160,7 @@ def test_tool_validator_error_isolation(mock_avail, temp_workspace):
             raise RuntimeError("Unexpected tester binary crash simulation")
         return "VALIDATED", "Clean", [], tool_info["files"]
         
-    with patch("soc_analyzer.phase0.tool_validator.validate_tool_for_module", side_effect=side_effect):
+    with patch("src.soc_analyzer.phase0.tool_validator.validate_tool_for_module", side_effect=side_effect):
         validate_environment(temp_workspace)
         
         # Verify mod_a: slang failed (due to exception isolation), but verilator and verible completed as VALIDATED

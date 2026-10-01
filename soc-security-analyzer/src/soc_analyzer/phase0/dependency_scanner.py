@@ -3,8 +3,8 @@ import re
 import bisect
 from typing import Dict, List, Set, Tuple, Any
 
-from soc_analyzer.preprocessing.comment_stripper import strip_comments
-from soc_analyzer.common.fs_utils import write_json_artifact
+from src.soc_analyzer.preprocessing.comment_stripper import strip_comments
+from src.soc_analyzer.common.fs_utils import write_json_artifact
 
 KEYWORDS = {
     "module", "endmodule", "package", "endpackage", "import", "export", "class", "endclass",
@@ -144,7 +144,7 @@ def scan_dependencies(file_paths: List[str], include_dirs: List[str]) -> Tuple[D
         with open(path, 'r', encoding='utf-8', errors='replace') as f:
             raw_text = f.read()
             
-        comment_stripped = strip_comments(raw_text)
+        comment_stripped = strip_comments(raw_text, preserve_keywords=[])
         clean_text_for_tokens = strip_strings(comment_stripped)
         processed_contents[path] = clean_text_for_tokens
         lines = comment_stripped.splitlines()
@@ -171,6 +171,7 @@ def scan_dependencies(file_paths: List[str], include_dirs: List[str]) -> Tuple[D
         package_def_pattern = re.compile(r"\bpackage\s+([a-zA-Z_][a-zA-Z0-9_]*)\b")
         include_pattern = re.compile(r"`include\s*[\"<]([^\"<>]+)[\">]")
         import_pattern = re.compile(r"\bimport\s+([a-zA-Z_][a-zA-Z0-9_]*)::")
+        pkg_ref_pattern = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)::")
         
         for idx, line in enumerate(lines):
             line_num = idx + 1
@@ -179,12 +180,40 @@ def scan_dependencies(file_paths: List[str], include_dirs: List[str]) -> Tuple[D
             for m in module_def_pattern.finditer(line):
                 mod_name = m.group(1)
                 defines_modules.append(mod_name)
-                known_modules[mod_name] = path
-                modules_data[mod_name] = {
-                    "defined_in": path,
-                    "instantiates": [],
-                    "instantiated_by": []
-                }
+                
+                # Check for duplicate module definitions across files
+                if mod_name in known_modules:
+                    previous_path = known_modules[mod_name]
+                    if previous_path != path:
+                        ambiguities.append({
+                            "file": path,
+                            "line": line_num,
+                            "type": "DUPLICATE_MODULE_DEFINITION",
+                            "description": f"Module '{mod_name}' is defined in both '{path}' and '{previous_path}'"
+                        })
+                        
+                # Prioritize generic primitive implementations
+                def get_path_score(p: str) -> int:
+                    score = 0
+                    if "prim_generic" in p:
+                        score += 10
+                    elif "hw/ip/prim/" in p:
+                        score += 5
+                    if "vendor/" in p or "lowrisc_ibex" in p:
+                        score -= 10
+                    if "prim_asap7" in p or "prim_xilinx" in p:
+                        score -= 5
+                    return score
+
+                if mod_name not in known_modules or get_path_score(path) > get_path_score(known_modules[mod_name]):
+                    known_modules[mod_name] = path
+                    modules_data[mod_name] = {
+                        "defined_in": path,
+                        "instantiates": [],
+                        "instantiated_by": []
+                    }
+
+
                 
             # Package definitions
             for m in package_def_pattern.finditer(line):
@@ -199,6 +228,10 @@ def scan_dependencies(file_paths: List[str], include_dirs: List[str]) -> Tuple[D
             # Package imports
             for m in import_pattern.finditer(line):
                 package_imports.append(m.group(1))
+            for m in pkg_ref_pattern.finditer(line):
+                pkg_name = m.group(1)
+                if pkg_name not in ["local", "super", "this", "std"] and pkg_name not in package_imports:
+                    package_imports.append(pkg_name)
                 
         files_data[path] = {
             "defines_modules": defines_modules,
@@ -392,7 +425,8 @@ def scan_dependencies(file_paths: List[str], include_dirs: List[str]) -> Tuple[D
                     
     graph = {
         "files": files_data,
-        "modules": modules_data
+        "modules": modules_data,
+        "packages": known_packages
     }
     
     return graph, ambiguities

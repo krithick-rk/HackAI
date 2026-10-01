@@ -1,7 +1,7 @@
 import re
 import sys
 from typing import Protocol, Dict, List, Any
-from soc_analyzer.common.schemas import CompressedLog, ErrorWarningDetail
+from src.soc_analyzer.common.schemas import CompressedLog, ErrorWarningDetail
 
 class ToolLogParser(Protocol):
     def parse(self, raw_output: str) -> dict:
@@ -108,8 +108,57 @@ class IVerilogLogParser:
 
 class YosysLogParser:
     def parse(self, raw_output: str) -> dict:
-        # TODO: Implement yosys log parser based on synthesis warnings/errors
-        raise NotImplementedError("YosysLogParser is not implemented yet")
+        errors = []
+        warnings = []
+        
+        # Yosys output format:
+        # ERROR: <msg>
+        # WARNING: <msg>
+        # Warning: <msg>
+        # filepath:line: message or at filepath:line
+        pattern = re.compile(r"^(ERROR|WARNING|Warning):\s*(.*)$")
+        file_line_pattern = re.compile(r"^(.*?):(\d+):\s*(.*)$")
+        
+        for line in raw_output.splitlines():
+            m = pattern.match(line)
+            if m:
+                severity = m.group(1).lower()
+                msg = m.group(2).strip()
+                
+                file_path = "unknown"
+                line_num = 0
+                col_num = 0
+                
+                m_file = file_line_pattern.match(msg)
+                if m_file:
+                    file_path = m_file.group(1).strip()
+                    try:
+                        line_num = int(m_file.group(2))
+                    except ValueError:
+                        pass
+                    msg = m_file.group(3).strip()
+                
+                detail = {
+                    "file": file_path,
+                    "line": line_num,
+                    "column": col_num,
+                    "severity": "error" if severity == "error" else "warning",
+                    "message": msg
+                }
+                
+                if severity == "error":
+                    errors.append(detail)
+                else:
+                    warnings.append(detail)
+                    
+        return {
+            "errors": errors,
+            "warnings": warnings,
+            "summary": {
+                "error_count": len(errors),
+                "warning_count": len(warnings)
+            }
+        }
 
 # Parser registry
 PARSERS: Dict[str, ToolLogParser] = {

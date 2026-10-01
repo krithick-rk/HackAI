@@ -1,5 +1,5 @@
 import os
-from soc_analyzer.preprocessing.keyword_config import PRESERVED_KEYWORDS
+from src.soc_analyzer.preprocessing.keyword_config import PRESERVED_KEYWORDS
 
 def strip_comments(source_text: str, preserve_keywords: list[str] | None = None) -> str:
     """

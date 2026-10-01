@@ -1,6 +1,32 @@
 {
   "module": "module_with_no_keyword_comment",
   "tool": "verible",
-  "attempts": [],
+  "attempts": [
+    {
+      "attempt_number": 1,
+      "command": "verible-verilog-lint /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+      "flags": [],
+      "exit_code": 1,
+      "raw_output": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv:5:7: Remove trailing spaces. [Style: trailing-spaces] [no-trailing-spaces]\n"
+    },
+    {
+      "attempt_number": 2,
+      "command": "verible-verilog-lint --rules=-line-length /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+      "flags": [
+        "--rules=-line-length"
+      ],
+      "exit_code": 1,
+      "raw_output": "/home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv:5:7: Remove trailing spaces. [Style: trailing-spaces] [no-trailing-spaces]\n"
+    },
+    {
+      "attempt_number": 3,
+      "command": "verible-verilog-lint --rules=-line-length,-no-unused-parameters /home/hackdac/Documents/AI/hackAI/soc-security-analyzer/fixtures/sample_rtl/module_with_no_keyword_comment.sv",
+      "flags": [
+        "--rules=-line-length,-no-unused-parameters"
+      ],
+      "exit_code": 1,
+      "raw_output": "ERROR: Illegal value '-line-length,-no-unused-parameters' specified for flag 'rules'; [ERR] Invalid flag \"no-unused-parameters\"\n"
+    }
+  ],
   "hypothesis": "Verify binary availability or dependencies"
 }

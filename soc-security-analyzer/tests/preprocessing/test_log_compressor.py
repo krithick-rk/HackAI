@@ -1,5 +1,5 @@
 import pytest
-from soc_analyzer.preprocessing.log_compressor import compress_log
+from src.soc_analyzer.preprocessing.log_compressor import compress_log
 
 def test_verible_log_parser():
     raw = (

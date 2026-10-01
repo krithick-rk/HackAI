@@ -1,7 +1,7 @@
 import os
 from typing import Dict, Set, Tuple, List, Any
-from soc_analyzer.common.fs_utils import write_json_artifact
-from soc_analyzer.common.schemas import PerModuleInvocationMap, ToolInvocationInfo
+from src.soc_analyzer.common.fs_utils import write_json_artifact
+from src.soc_analyzer.common.schemas import PerModuleInvocationMap, ToolInvocationInfo
 
 def get_transitive_dependencies(module_name: str, modules_map: dict, visited: Set[str] = None) -> Tuple[Set[str], Set[str]]:
     """Recursively finds all modules instantiated by module_name and the files defining them."""
@@ -79,6 +79,15 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
         _, child_files = get_transitive_dependencies(mod_name, modules_map)
         child_files_clean = {f for f in child_files if f != defining_file}
         
+        # Check for instantiated modules not in modules_map and resolve from project repository
+        from src.soc_analyzer.phase0.tool_validator import find_real_project_file
+        instantiated_names = mdata.get("instantiates", [])
+        for inst in instantiated_names:
+            if inst not in modules_map:
+                real_inst_file = find_real_project_file(inst, "/home/hackdac/opentitan")
+                if real_inst_file and os.path.exists(real_inst_file) and real_inst_file != defining_file:
+                    child_files_clean.add(real_inst_file)
+        
         # 2. Transitive include files across target module and its companions
         all_involved_files = child_files_clean | {defining_file}
         all_includes = set()
@@ -91,11 +100,50 @@ def build_invocation_maps(dependency_graph: dict) -> Dict[str, PerModuleInvocati
         # 4. Companions: basenames of child files
         required_companions = sorted(list({os.path.basename(cf) for cf in child_files_clean}))
         
-        # 5. File arrays for commands
-        # Slang and Verilator require the target file and all child companion files
-        full_file_list = [defining_file] + sorted(list(child_files_clean))
-        # Verible checks file-by-file
-        verible_file_list = [defining_file]
+        # 5. Packages: resolve package imports of all involved files recursively
+        packages_map = dependency_graph.get("packages", {})
+        all_packages_to_include = set()
+        visited_pkgs = set()
+        
+        def add_packages_for_file(filepath):
+            fdata = files_map.get(filepath, {})
+            imports = fdata.get("package_imports", [])
+            for pkg in imports:
+                if pkg not in visited_pkgs:
+                    visited_pkgs.add(pkg)
+                    pkg_file = packages_map.get(pkg)
+                    if not pkg_file:
+                        pkg_file = find_real_project_file(pkg, "/home/hackdac/opentitan")
+                    if pkg_file and os.path.exists(pkg_file):
+                        all_packages_to_include.add(os.path.abspath(pkg_file))
+                        add_packages_for_file(pkg_file)
+                        
+        for f in all_involved_files:
+            add_packages_for_file(f)
+            
+        package_files = sorted(list(all_packages_to_include))
+        
+        # 6. File arrays for commands
+        # Prepend prim_assert.sv if available to define global assertion & FSM macros
+        prim_assert_path = None
+        for f in dependency_graph.get("files", {}).keys():
+            if f.endswith("hw/ip/prim/rtl/prim_assert.sv"):
+                prim_assert_path = os.path.abspath(f)
+                break
+        if not prim_assert_path:
+            # Fallback path
+            prim_assert_path = "/home/hackdac/opentitan/hw/ip/prim/rtl/prim_assert.sv"
+            
+        macro_files = []
+        if prim_assert_path and os.path.exists(prim_assert_path):
+            macro_files.append(prim_assert_path)
+            
+        # Slang and Verilator require packages compiled first, then the target file, then companions
+        full_file_list = macro_files + package_files + [defining_file] + sorted(list(child_files_clean))
+        # Verible checks file-by-file but needs package context compiled first
+        verible_file_list = macro_files + package_files + [defining_file]
+
+
         
         # Setup slang
         slang_info: ToolInvocationInfo = {
