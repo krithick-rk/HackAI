@@ -44,6 +44,7 @@ class AnalyzerConfig:
     verbose: bool = False
     registry_dir: Optional[str] = None
     exit_on_findings: bool = False
+    subfolders: List[str] = field(default_factory=list)
     extra_options: Dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> List[str]:

@@ -91,12 +91,34 @@ class AnalyzerPipeline:
         if os.path.isfile(repo_path):
             source_files.append(repo_path)
         else:
-            # Recursive scan for SV and Verilog files
-            target_scan_dir = os.path.join(repo_path, self.config.module) if self.config.module else repo_path
-            for root, _, files in os.walk(target_scan_dir):
-                for f in files:
-                    if f.endswith((".sv", ".v")) and not any(p in root for p in ["/build", "/.git", "/dist"]):
-                        source_files.append(os.path.join(root, f))
+            # Check for subfolder-scoped analysis
+            target_subfolders = getattr(self.config, "subfolders", []) or (
+                self.config.extra_options.get("subfolders") if hasattr(self.config, "extra_options") and self.config.extra_options else []
+            )
+
+            if target_subfolders:
+                for sf in target_subfolders:
+                    if not sf or not isinstance(sf, str):
+                        continue
+                    clean_sf = sf.strip().lstrip("/\\")
+                    sf_path = os.path.abspath(os.path.join(repo_path, clean_sf))
+                    if os.path.commonpath([repo_path, sf_path]) == repo_path and os.path.exists(sf_path):
+                        if os.path.isfile(sf_path):
+                            if sf_path.endswith((".sv", ".v")):
+                                source_files.append(sf_path)
+                        else:
+                            for root, _, files in os.walk(sf_path):
+                                for f in files:
+                                    if f.endswith((".sv", ".v")) and not any(p in root for p in ["/build", "/.git", "/dist"]):
+                                        source_files.append(os.path.join(root, f))
+                source_files = list(dict.fromkeys(source_files))
+            else:
+                # Recursive scan for SV and Verilog files
+                target_scan_dir = os.path.join(repo_path, self.config.module) if self.config.module else repo_path
+                for root, _, files in os.walk(target_scan_dir):
+                    for f in files:
+                        if f.endswith((".sv", ".v")) and not any(p in root for p in ["/build", "/.git", "/dist"]):
+                            source_files.append(os.path.join(root, f))
 
         if not source_files:
             run_record.status = "PARTIAL"

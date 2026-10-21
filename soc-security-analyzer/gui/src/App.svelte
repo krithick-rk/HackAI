@@ -49,8 +49,10 @@
   let loadingModuleDetail: boolean = false;
 
   // Analysis State
-  let analysisScope: 'entire' | 'selected_modules' = 'entire';
+  let analysisScope: 'entire' | 'selected_modules' | 'selected_subfolders' = 'entire';
   let selectedAnalysisModules: string[] = [];
+  let selectedAnalysisSubfolders: string[] = [];
+  let selectedSubfolderFilter: string = 'all';
   let analysisTypes = {
     structural: true,
     data_control_flow: true,
@@ -142,6 +144,9 @@
       if (discoveryData && discoveryData.modules) {
         dynamicModules = discoveryData.modules;
       }
+      if (discoveryData && discoveryData.subfolders && selectedAnalysisSubfolders.length === 0) {
+        selectedAnalysisSubfolders = discoveryData.subfolders.map((sf: any) => sf.path);
+      }
     } catch (e: any) {
       discoveryError = e.message || 'Discovery data not available.';
     } finally {
@@ -223,6 +228,7 @@
         project_name: projectName,
         scope: analysisScope,
         modules: selectedAnalysisModules,
+        subfolders: selectedAnalysisSubfolders,
         analysis_types: analysisTypes,
         ai_provider: selectedAIProvider
       };
@@ -235,6 +241,39 @@
     } finally {
       startingAnalysis = false;
     }
+  }
+
+  function selectAllSubfolders() {
+    if (discoveryData && discoveryData.subfolders) {
+      selectedAnalysisSubfolders = discoveryData.subfolders.map((sf: any) => sf.path);
+    }
+  }
+
+  function deselectAllSubfolders() {
+    selectedAnalysisSubfolders = [];
+  }
+
+  function toggleSubfolder(path: string, checked: boolean) {
+    if (checked) {
+      if (!selectedAnalysisSubfolders.includes(path)) {
+        selectedAnalysisSubfolders = [...selectedAnalysisSubfolders, path];
+      }
+    } else {
+      selectedAnalysisSubfolders = selectedAnalysisSubfolders.filter(p => p !== path);
+    }
+  }
+
+  function analyzeSingleSubfolder(subfolderPath: string) {
+    analysisScope = 'selected_subfolders';
+    selectedAnalysisSubfolders = [subfolderPath];
+    activeView = 'analyze';
+    navigate(`/projects/${projectName || 'default'}/analyze`);
+  }
+
+  function filterModulesBySubfolder(subfolderPath: string) {
+    selectedSubfolderFilter = subfolderPath;
+    activeView = 'modules';
+    navigate(`/projects/${projectName || 'default'}/modules`);
   }
 
   async function fetchFindings() {
@@ -410,6 +449,9 @@
       projectName = cleanName || disc.repository_name;
       designDir = path;
       dynamicModules = disc.modules || [];
+      if (disc.subfolders && selectedAnalysisSubfolders.length === 0) {
+        selectedAnalysisSubfolders = disc.subfolders.map((sf: any) => sf.path);
+      }
       activeView = 'discovery';
       navigate(`/projects/${projectName}/discovery`);
       fetchProjects();
@@ -519,6 +561,11 @@
   // Filtered Modules
   $: filteredDynamicModules = dynamicModules.filter(m => {
     if (moduleSearchText && !m.name.toLowerCase().includes(moduleSearchText.toLowerCase())) return false;
+    if (selectedSubfolderFilter && selectedSubfolderFilter !== 'ALL' && selectedSubfolderFilter !== 'all') {
+      const sf = (m.subfolder || '').replace(/\\/g, '/').replace(/\/$/, '');
+      const targetSf = selectedSubfolderFilter.replace(/\\/g, '/').replace(/\/$/, '');
+      if (!sf.startsWith(targetSf) && sf !== targetSf) return false;
+    }
     if (moduleStatusFilter !== 'ALL') {
       if (moduleStatusFilter === 'WITH_FINDINGS' && (m.findings_count || 0) === 0) return false;
       if (moduleStatusFilter === 'NOT_ANALYZED' && m.analysis_status !== 'NOT_ANALYZED') return false;
@@ -804,6 +851,68 @@
             </div>
           </div>
         </div>
+
+        <!-- Discovered Subfolders Card -->
+        {#if discoveryData?.subfolders && discoveryData.subfolders.length > 0}
+          <div class="card glass" style="margin-top: 1.25rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+              <div>
+                <h3 style="margin: 0;">Discovered Subfolders ({discoveryData.subfolders.length})</h3>
+                <p class="subtext" style="margin: 0.25rem 0 0 0;">Browse repository directories, inspect their specific modules, or target analysis directly to a subfolder.</p>
+              </div>
+              <button class="btn btn-sm btn-secondary" on:click={() => {
+                selectAllSubfolders();
+                analysisScope = 'selected_subfolders';
+                activeView = 'analyze';
+                navigate(`/projects/${projectName}/analyze`);
+              }}>
+                ⚙️ Configure Subfolder Analysis
+              </button>
+            </div>
+
+            <div class="subfolders-table-wrap">
+              <table class="simple-table">
+                <thead>
+                  <tr>
+                    <th>Subfolder Path</th>
+                    <th>RTL Files</th>
+                    <th>C/C++</th>
+                    <th>Modules</th>
+                    <th>Languages</th>
+                    <th style="text-align: right;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {#each discoveryData.subfolders as sf}
+                    <tr>
+                      <td>
+                        <strong>📁 {sf.path}</strong>
+                      </td>
+                      <td>{sf.rtl_files || 0}</td>
+                      <td>{sf.c_cpp_files || 0}</td>
+                      <td><span class="badge badge-accent">{sf.module_count || 0} modules</span></td>
+                      <td>
+                        {#each (sf.languages || []) as lang}
+                          <span class="mini-chip">{lang}</span>
+                        {/each}
+                      </td>
+                      <td style="text-align: right;">
+                        <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                          <button class="btn btn-xs btn-outline" on:click={() => filterModulesBySubfolder(sf.path)}>
+                            View Modules
+                          </button>
+                          <button class="btn btn-xs btn-primary" on:click={() => analyzeSingleSubfolder(sf.path)}>
+                            ⚡ Analyze Only This
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {/if}
       </section>
     {/if}
 
@@ -821,6 +930,14 @@
           </div>
           <div class="filters-bar">
             <input type="text" placeholder="Search modules..." bind:value={moduleSearchText} class="search-input" />
+            <select bind:value={selectedSubfolderFilter} class="filter-select">
+              <option value="all">📁 All Subfolders ({discoveryData?.subfolders?.length || 0})</option>
+              {#if discoveryData?.subfolders}
+                {#each discoveryData.subfolders as sf}
+                  <option value={sf.path}>📁 {sf.path} ({sf.module_count} mods)</option>
+                {/each}
+              {/if}
+            </select>
             <select bind:value={moduleStatusFilter} class="filter-select">
               <option value="ALL">All Modules ({dynamicModules.length})</option>
               <option value="WITH_FINDINGS">With Findings</option>
@@ -846,6 +963,11 @@
                     <span class="badge badge-dim">Not analyzed</span>
                   {/if}
                 </div>
+                {#if mod.subfolder}
+                  <div class="subtext" style="font-size: 0.75rem; color: var(--accent-cyan); margin: 0.15rem 0 0.35rem 0;">
+                    📁 {mod.subfolder}
+                  </div>
+                {/if}
                 <div class="module-file-path" title={mod.file}>
                   📄 {mod.file} (Line {mod.line})
                 </div>
@@ -892,11 +1014,48 @@
                   Entire Repository ({dynamicModules.length} Modules)
                 </label>
                 <label class="radio-label">
+                  <input type="radio" bind:group={analysisScope} value="selected_subfolders" />
+                  Specific Subfolders ({selectedAnalysisSubfolders.length} selected)
+                </label>
+                <label class="radio-label">
                   <input type="radio" bind:group={analysisScope} value="selected_modules" />
                   Selected Module
                 </label>
               </div>
             </div>
+
+            {#if analysisScope === 'selected_subfolders'}
+              <div class="config-group subfolders-picker card glass">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                  <label style="margin: 0;">Target Subfolders ({selectedAnalysisSubfolders.length} of {discoveryData?.subfolders?.length || 0} active):</label>
+                  <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" class="btn btn-xs btn-outline" on:click={selectAllSubfolders}>Select All</button>
+                    <button type="button" class="btn btn-xs btn-outline" on:click={deselectAllSubfolders}>Clear</button>
+                  </div>
+                </div>
+
+                {#if discoveryData?.subfolders && discoveryData.subfolders.length > 0}
+                  <div class="subfolders-checklist">
+                    {#each discoveryData.subfolders as sf}
+                      <label class="subfolder-check-row {selectedAnalysisSubfolders.includes(sf.path) ? 'checked' : ''}">
+                        <input
+                          type="checkbox"
+                          checked={selectedAnalysisSubfolders.includes(sf.path)}
+                          on:change={(e) => toggleSubfolder(sf.path, e.target.checked)}
+                        />
+                        <span class="sf-name">📁 {sf.path}</span>
+                        <span class="sf-badges">
+                          <span class="badge-mini">{sf.rtl_files || sf.file_count} files</span>
+                          <span class="badge-mini">{sf.module_count} modules</span>
+                        </span>
+                      </label>
+                    {/each}
+                  </div>
+                {:else}
+                  <p class="subtext">No subfolders detected. Please run Discovery on the repository first.</p>
+                {/if}
+              </div>
+            {/if}
 
             {#if analysisScope === 'selected_modules'}
               <div class="config-group">
@@ -2948,4 +3107,79 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
   }
+
+  /* Subfolders selector and card styling */
+  .subfolders-picker {
+    padding: 1.15rem 1.25rem;
+    margin-top: 0.5rem;
+    background: rgba(15, 23, 42, 0.7);
+    border: 1px solid rgba(0, 223, 216, 0.25);
+    border-radius: 8px;
+  }
+
+  .subfolders-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+
+  .subfolder-check-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0.85rem;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .subfolder-check-row:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(0, 223, 216, 0.35);
+  }
+
+  .subfolder-check-row.checked {
+    background: rgba(0, 223, 216, 0.08);
+    border-color: rgba(0, 223, 216, 0.45);
+  }
+
+  .subfolder-check-row .sf-name {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.85rem;
+    color: #e2e8f0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .subfolder-check-row .sf-badges {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .subfolders-table-wrap {
+    overflow-x: auto;
+  }
+
+  .badge-mini {
+    display: inline-block;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.08);
+    color: #94a3b8;
+  }
+
+  .btn-xs {
+    padding: 0.25rem 0.55rem;
+    font-size: 0.75rem;
+    border-radius: 4px;
+  }
 </style>
+

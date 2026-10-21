@@ -64,6 +64,7 @@ def discover_repository(repo_path: str) -> Dict[str, Any]:
     important_dirs: Set[str] = set()
     found_configs: List[str] = []
     modules: Dict[str, Dict[str, Any]] = {}
+    subfolders_map: Dict[str, Dict[str, Any]] = {}
 
     for root, dirs, files in os.walk(abs_path):
         dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith(".")]
@@ -71,30 +72,53 @@ def discover_repository(repo_path: str) -> Dict[str, Any]:
         if rel_dir == ".":
             rel_dir = ""
 
-        has_rtl_in_dir = False
+        dir_sv = 0
+        dir_v = 0
+        dir_c = 0
+        dir_total = 0
+        dir_modules: List[str] = []
 
         for f in files:
             total_files += 1
+            dir_total += 1
             f_path = os.path.join(root, f)
             rel_file = os.path.relpath(f_path, abs_path)
 
             if f.endswith((".sv", ".svh")):
                 sv_files += 1
-                has_rtl_in_dir = True
-                _scan_module_definitions(f_path, rel_file, modules)
+                dir_sv += 1
+                names = _scan_module_definitions(f_path, rel_file, modules)
+                dir_modules.extend(names)
             elif f.endswith((".v", ".vh")):
                 v_files += 1
-                has_rtl_in_dir = True
-                _scan_module_definitions(f_path, rel_file, modules)
+                dir_v += 1
+                names = _scan_module_definitions(f_path, rel_file, modules)
+                dir_modules.extend(names)
             elif f.endswith((".c", ".cc", ".cpp", ".cxx", ".h", ".hpp")):
                 c_cpp_files += 1
+                dir_c += 1
             elif f.endswith((".hjson", ".rdl", ".yaml", ".yml", ".json", ".core", ".toml")):
                 config_files += 1
                 if len(found_configs) < 50:
                     found_configs.append(rel_file)
 
-        if has_rtl_in_dir and rel_dir:
-            important_dirs.add(rel_dir.split(os.sep)[0])
+        if (dir_sv + dir_v + dir_c) > 0 and rel_dir:
+            folder_key = rel_dir.replace("\\", "/")
+            dir_langs = []
+            if dir_sv > 0: dir_langs.append("SystemVerilog")
+            if dir_v > 0: dir_langs.append("Verilog")
+            if dir_c > 0: dir_langs.append("C/C++")
+            subfolders_map[folder_key] = {
+                "path": folder_key,
+                "name": os.path.basename(folder_key),
+                "file_count": dir_total,
+                "rtl_files": dir_sv + dir_v,
+                "c_cpp_files": dir_c,
+                "module_count": len(dir_modules),
+                "modules": sorted(list(set(dir_modules))),
+                "languages": dir_langs
+            }
+            important_dirs.add(folder_key.split("/")[0])
 
     # Detected languages
     languages = []
@@ -138,8 +162,10 @@ def discover_repository(repo_path: str) -> Dict[str, Any]:
             "config_files": config_files,
             "total_files": total_files,
             "modules_discovered": len(modules),
+            "subfolders_count": len(subfolders_map)
         },
         "modules": sorted(list(modules.values()), key=lambda m: m["name"]),
+        "subfolders": sorted(list(subfolders_map.values()), key=lambda sf: sf["path"]),
         "important_dirs": sorted(list(important_dirs)),
         "config_files": sorted(found_configs)[:30],
         "readiness": {
@@ -156,13 +182,14 @@ def discover_repository(repo_path: str) -> Dict[str, Any]:
     }
 
 
-def _scan_module_definitions(abs_file: str, rel_file: str, modules_acc: Dict[str, Dict[str, Any]]):
+def _scan_module_definitions(abs_file: str, rel_file: str, modules_acc: Dict[str, Dict[str, Any]]) -> List[str]:
     """Parses module declarations, ports, clocks, and child instances from a Verilog/SV file."""
+    discovered: List[str] = []
     try:
         with open(abs_file, "r", encoding="utf-8", errors="ignore") as fh:
             lines = fh.readlines()
     except Exception:
-        return
+        return discovered
 
     in_block_comment = False
     current_module: Optional[Dict[str, Any]] = None
@@ -180,9 +207,11 @@ def _scan_module_definitions(abs_file: str, rel_file: str, modules_acc: Dict[str
         if mod_match:
             mod_name = mod_match.group(1)
             if mod_name not in ("automatic", "static", "interface", "package"):
+                subfolder_path = os.path.dirname(rel_file).replace("\\", "/") or "."
                 current_module = {
                     "name": mod_name,
                     "file": rel_file,
+                    "subfolder": subfolder_path,
                     "absolute_path": abs_file,
                     "line": line_idx,
                     "ports_count": 0,
@@ -195,6 +224,7 @@ def _scan_module_definitions(abs_file: str, rel_file: str, modules_acc: Dict[str
                     "findings_count": 0
                 }
                 modules_acc[mod_name] = current_module
+                discovered.append(mod_name)
                 in_port_list = "(" in cleaned and not cleaned.rstrip().endswith(");")
                 port_buffer = [cleaned]
                 continue
@@ -238,6 +268,8 @@ def _scan_module_definitions(abs_file: str, rel_file: str, modules_acc: Dict[str
 
             if "endmodule" in cleaned:
                 current_module = None
+
+    return discovered
 
 
 def _parse_ports_from_buffer(buffer_text: str, module_obj: Dict[str, Any]):

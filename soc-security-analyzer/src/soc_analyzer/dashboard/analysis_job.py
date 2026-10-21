@@ -267,12 +267,17 @@ class AnalysisJobManager:
             if mods:
                 selected_module = mods[0]
 
+        subfolders = job.options.get("subfolders", [])
+        if job.options.get("scope") == "selected_subfolders" or subfolders:
+            job.add_log(f"Configuring scoped analysis for {len(subfolders)} subfolder(s): {', '.join(subfolders)}")
+
         ai_enabled = job.options.get("analysis_types", {}).get("ai_assisted", False)
         active_ai = ai_manager.get_active_provider() if ai_enabled else None
 
         config = AnalyzerConfig(
             repository=job.repo_path,
             module=selected_module,
+            subfolders=subfolders,
             output_dir=output_dir,
             no_ai=(not ai_enabled or not active_ai),
             no_dynamic=(not job.options.get("analysis_types", {}).get("validation", True)),

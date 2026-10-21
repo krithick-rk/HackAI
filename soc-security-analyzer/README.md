@@ -28,6 +28,8 @@ An end-to-end hardware security auditing platform for System-on-Chip (SoC) and R
   * Dynamic model selection and automatic task routing.
   * Secure server-side credential storage with masked keys and live connection latency testing.
   * **Resilient Execution**: Analysis continues without interruption using deterministic rules if AI providers are unreachable or unconfigured.
+* **Subfolder-Scoped Security Analysis**: Select specific repository subfolders to restrict AST extraction, symbol mapping, and vulnerability detection to targeted IP directories (e.g. `rtl/src/soc_ifc/rtl`).
+* **Modular REST API**: Fully de-monolithized architecture with decoupled, independent route endpoints for projects, modules, subfolders, analysis jobs, findings, source snippets, AI, and reports.
 * **Comprehensive Reporting**: Generates downloadable machine-readable JSON and executive HTML security audit reports.
 
 ---
@@ -36,17 +38,25 @@ An end-to-end hardware security auditing platform for System-on-Chip (SoC) and R
 
 The web application runs on **http://localhost:8080**.
 
-### Method 1: Using the Unified Analyzer CLI (Recommended)
+### Quick Start: Server Launcher Script (Recommended)
 
 From the `soc-security-analyzer` directory:
 
 ```bash
-# Using the project Python virtual environment:
-/home/hackdac/.HACK_AI/bin/python3 -m soc_analyzer server
+./start_server.sh
 ```
 
-With custom port or auto-reload:
+This automatically:
+1. Cleans up any dangling processes on port 8080.
+2. Compiles GUI assets (`gui/dist`) if not already built.
+3. Starts the modular FastAPI server with live reloading enabled.
+
+---
+
+### Method 1: Using the Unified Analyzer CLI
+
 ```bash
+# Using the project Python virtual environment:
 /home/hackdac/.HACK_AI/bin/python3 -m soc_analyzer server --host 0.0.0.0 --port 8080 --reload
 ```
 
@@ -77,6 +87,32 @@ To stop a running background server:
 ```bash
 pkill -f "soc_analyzer.dashboard.server:app"
 ```
+
+---
+
+## 🧩 Modular API Endpoints Architecture
+
+The backend monolith has been refactored into independent FastAPI `APIRouter` modules:
+
+| Route Module | Prefix / Endpoints | Responsibility |
+|---|---|---|
+| `routes/projects.py` | `/api/projects`, `/api/projects/{id}`, `/api/projects/select-folder`, `/api/projects/discover`, `/api/projects/upload-directory` | Repository ingestion, native folder picker bridge, project configuration |
+| `routes/modules.py` | `/api/projects/{id}/modules`, `/api/projects/{id}/subfolders`, `/api/projects/{id}/modules/{name}` | Dynamic module discovery, subfolder listing, subfolder filtering (`?subfolder=...`) |
+| `routes/analysis.py` | `/api/analyze`, `/api/projects/{id}/analyze`, `/api/analysis/status`, `/api/v2/scan` | Asynchronous analysis execution (entire repo, selected subfolders, or module) |
+| `routes/findings.py` | `/api/findings`, `/api/findings/revalidate`, `/api/v2/runs`, `/api/v2/findings` | Vulnerability findings query, filtering, evidence, revalidation |
+| `routes/source.py` | `/api/source/snippet` | Safe source code preview with highlight ranges and path-traversal guards |
+| `routes/ai.py` | `/api/ai/providers`, `/api/ai/test`, `/api/ai/usage` | Provider-agnostic AI Gateway configuration, testing, token accounting |
+| `routes/reports.py` | `/api/reports`, `/reports/{filename}` | Downloadable JSON and HTML audit reports |
+| `routes/legacy.py` | `/api/scan`, `/api/run`, `/api/module/inspect`, `/api/repair` | Phase 0 and backward compatibility endpoints |
+
+---
+
+## 📁 Working with Subfolders
+
+Users can target specific IP subfolders directly:
+1. **Discovery**: The analyzer scans directory trees and registers all folders containing HDL source files.
+2. **Filtering**: The Modules view allows filtering modules by subfolder.
+3. **Scoped Analysis**: Under Analysis Configuration, choose **"Specific Subfolders"** and select one or more directories. The pipeline will strictly index and check files in those subfolders.
 
 ---
 
