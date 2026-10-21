@@ -16,6 +16,30 @@ from typing import Dict, Any, List, Optional
 AI_CONFIG_PATH = os.path.abspath("workspace/ai_providers.json")
 
 DEFAULT_PROVIDERS = {
+    "codex": {
+        "id": "codex",
+        "name": "OpenAI Codex CLI",
+        "type": "cli",
+        "endpoint": "local-cli",
+        "models": ["default", "gpt-6.1-sol", "o3", "gpt-4o"],
+        "default_model": "default",
+        "capabilities": ["code_understanding", "rtl_reasoning", "vulnerability_triage", "remediation_explanation"],
+        "enabled": True,
+        "api_key": "managed-by-cli",
+        "description": "Primary local terminal agent. When tokens run out or quota is reached, automatically falls back to Antigravity CLI."
+    },
+    "antigravity": {
+        "id": "antigravity",
+        "name": "Google Antigravity CLI (AGY)",
+        "type": "cli",
+        "endpoint": "local-cli",
+        "models": ["default", "gemini-2.0-flash-exp", "gemini-1.5-pro"],
+        "default_model": "default",
+        "capabilities": ["code_understanding", "rtl_reasoning", "vulnerability_triage", "remediation_explanation", "report_summarization"],
+        "enabled": True,
+        "api_key": "managed-by-cli",
+        "description": "Autonomous security agent CLI with sandbox isolation. Serves as automatic fallback when Codex tokens are finished."
+    },
     "openai": {
         "id": "openai",
         "name": "OpenAI",
@@ -146,21 +170,39 @@ class AIProviderManager:
 
     def get_public_providers(self) -> Dict[str, Any]:
         """Returns provider catalog with strictly masked credentials."""
+        import shutil
         providers_out = []
         for pid, p in self.data["providers"].items():
-            has_key = bool(p.get("api_key") and p["api_key"].strip())
-            is_connected = bool(p.get("enabled", False) and has_key)
+            is_cli = p.get("type") == "cli" or pid in ("codex", "antigravity")
+            if is_cli:
+                exe = "codex" if pid == "codex" else "agy"
+                has_bin = bool(shutil.which(exe) or os.path.exists(f"/home/hackdac/.local/bin/{exe}"))
+                has_key = has_bin
+                is_connected = bool(p.get("enabled", True) and has_bin)
+                masked = "Local CLI Binary" if has_bin else "Binary Not Found"
+                if pid == "codex":
+                    status = "Ready (Auto-fallback to AGY)" if is_connected else "CLI Not Installed"
+                else:
+                    status = "Ready (Sandbox Isolated)" if is_connected else "CLI Not Installed"
+            else:
+                has_key = bool(p.get("api_key") and p["api_key"].strip())
+                is_connected = bool(p.get("enabled", False) and has_key)
+                masked = mask_key(p.get("api_key", ""))
+                status = "Connected" if is_connected else "Not configured"
+
             providers_out.append({
                 "id": pid,
                 "name": p.get("name", pid),
+                "type": "cli" if is_cli else "api",
                 "endpoint": p.get("endpoint", ""),
                 "models": p.get("models", []),
                 "default_model": p.get("default_model", ""),
                 "capabilities": p.get("capabilities", []),
                 "enabled": p.get("enabled", False),
                 "has_key": has_key,
-                "masked_key": mask_key(p.get("api_key", "")),
-                "status": "Connected" if is_connected else "Not configured"
+                "masked_key": masked,
+                "status": status,
+                "description": p.get("description", "")
             })
         return {
             "default_provider": self.data.get("default_provider", "automatic"),
@@ -213,19 +255,30 @@ class AIProviderManager:
         default_pref = self.data.get("default_provider", "automatic")
         providers = self.data.get("providers", {})
 
-        # If user explicitly requested a specific provider
-        if default_pref != "automatic" and default_pref in providers:
+        # If user explicitly requested codex, antigravity, or automatic
+        if default_pref in ("automatic", "codex", "codex_then_antigravity"):
+            codex_p = providers.get("codex")
+            if codex_p and codex_p.get("enabled", True):
+                return codex_p
+            agy_p = providers.get("antigravity")
+            if agy_p and agy_p.get("enabled", True):
+                return agy_p
+        elif default_pref == "antigravity":
+            agy_p = providers.get("antigravity")
+            if agy_p and agy_p.get("enabled", True):
+                return agy_p
+
+        # If user explicitly requested a specific API provider
+        if default_pref in providers:
             p = providers[default_pref]
-            if p.get("enabled") and p.get("api_key"):
+            if p.get("enabled") and (p.get("api_key") or p.get("type") == "cli"):
                 return p
 
-        # Automatic routing: pick first enabled provider matching task_type
-        for pid, p in providers.items():
-            if not p.get("enabled") or not p.get("api_key"):
-                continue
-            if task_type and task_type not in p.get("capabilities", []):
-                continue
-            return p
+        # Fallback to Codex CLI or Antigravity CLI if available
+        if "codex" in providers and providers["codex"].get("enabled", True):
+            return providers["codex"]
+        if "antigravity" in providers and providers["antigravity"].get("enabled", True):
+            return providers["antigravity"]
 
         # Fallback to any enabled provider with a key
         for pid, p in providers.items():
@@ -238,6 +291,41 @@ class AIProviderManager:
         """Tests provider connectivity with honest diagnostic reporting."""
         pid = provider_id.lower().strip()
         provider = self.data["providers"].get(pid, {})
+        start = time.time()
+
+        # Test CLI providers (Codex and Antigravity)
+        if pid in ("codex", "antigravity"):
+            import subprocess
+            import shutil
+            exe_name = "codex" if pid == "codex" else "agy"
+            default_path = f"/home/hackdac/.local/bin/{exe_name}"
+            resolved = shutil.which(exe_name) or (default_path if os.path.exists(default_path) else None)
+            if not resolved:
+                return {
+                    "status": "error",
+                    "message": f"{provider.get('name', pid)} binary '{exe_name}' not found in PATH or {default_path}.",
+                    "latency_ms": 0
+                }
+            try:
+                ver_proc = subprocess.run([resolved, "--version"], capture_output=True, text=True, timeout=5)
+                ver_str = ver_proc.stdout.strip() or ver_proc.stderr.strip() or "Installed"
+                latency = int((time.time() - start) * 1000)
+                if pid == "codex":
+                    msg = f"Codex CLI is operational ({ver_str}). Configured with automatic Antigravity fallback when token quota finishes."
+                else:
+                    msg = f"Google Antigravity CLI (AGY) is operational ({ver_str}) with sandbox isolation."
+                return {
+                    "status": "ok",
+                    "message": msg,
+                    "latency_ms": latency
+                }
+            except Exception as e:
+                return {
+                    "status": "error",
+                    "message": f"CLI execution check failed: {e}",
+                    "latency_ms": int((time.time() - start) * 1000)
+                }
+
         key = (api_key or provider.get("api_key") or "").strip()
         ep = (endpoint or provider.get("endpoint") or "").strip()
         model = provider.get("default_model", "default")

@@ -388,6 +388,9 @@ def test_live_agy_smoke_test():
 
     gw = AIGateway(config={
         "ai": {
+            "terminal": {
+                "preferred_backend": "antigravity"
+            },
             "providers": {
                 "antigravity": {
                     "executable": resolved,
@@ -407,3 +410,91 @@ def test_live_agy_smoke_test():
     assert resp.backend_used == "antigravity"
     assert len(gw.ledger.get_entries()) == 1
     assert resp.is_authoritative is False
+
+
+def test_live_codex_smoke_test():
+    import shutil
+    resolved = shutil.which("codex") or (
+        "/home/hackdac/.local/bin/codex" if os.path.exists("/home/hackdac/.local/bin/codex") else None
+    )
+    if not resolved:
+        pytest.skip("Codex CLI executable not found on this environment")
+
+    gw = AIGateway(config={
+        "ai": {
+            "terminal": {
+                "preferred_backend": "codex"
+            },
+            "providers": {
+                "codex": {
+                    "executable": resolved,
+                    "timeout": 30.0,
+                }
+            }
+        }
+    })
+    resp = gw.call_prompt(
+        task_type=TaskType.EXPLAIN,
+        prompt='Respond ONLY with valid JSON: {"status": "ok"}',
+        schema_validator=lambda d: d.get("status") == "ok",
+    )
+    assert resp.is_success
+    assert resp.outcome == GatewayOutcome.SUCCESS
+    assert resp.parsed_output == {"status": "ok"}
+    assert resp.backend_used == "codex"
+    assert len(gw.ledger.get_entries()) == 1
+    assert resp.is_authoritative is False
+
+
+def test_gateway_codex_token_finished_fallback_to_antigravity():
+    """When Codex CLI token is finished or quota exhausted, gateway automatically falls back to Antigravity CLI."""
+    # Codex backend fails with token exhaustion error
+    exhausted_codex = MockBackend(
+        name="codex",
+        identity="codex:v1",
+        responses=[
+            BackendResult(
+                error="rate limit: 429 insufficient_quota token limit exceeded",
+                is_token_exhausted=True
+            )
+        ],
+    )
+    # Antigravity backend succeeds
+    mock_agy = MockBackend(
+        name="antigravity",
+        identity="antigravity:gemini",
+        responses=[
+            BackendResult(
+                raw_text='{"status": "ok_from_agy"}',
+                parsed_output={"status": "ok_from_agy"}
+            )
+        ],
+    )
+
+    gw = AIGateway(config={
+        "ai": {
+            "terminal": {
+                "preferred_backend": "codex",
+                "fallback_backend": "antigravity"
+            }
+        },
+        "budget": {"max_retries": 1}
+    })
+    gw.register_backend("codex", exhausted_codex)
+    gw.register_backend("antigravity", mock_agy)
+
+    # First call: Codex fails with token exhausted, falls back to Antigravity
+    resp1 = gw.call_prompt(TaskType.EXPLAIN, "Analyze signal with codex first")
+    assert resp1.is_success
+    assert resp1.backend_used == "antigravity"
+    assert resp1.parsed_output == {"status": "ok_from_agy"}
+    assert exhausted_codex.call_count >= 1
+    assert mock_agy.call_count == 1
+    assert gw._codex_token_exhausted is True
+
+    # Second call: Since codex token was finished, routes immediately to Antigravity
+    resp2 = gw.call_prompt(TaskType.EXPLAIN, "Second call after codex token finished")
+    assert resp2.is_success
+    assert resp2.backend_used == "antigravity"
+    assert mock_agy.call_count == 2
+

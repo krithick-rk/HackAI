@@ -26,6 +26,7 @@ class BackendResult:
     wall_time: Optional[float] = None
     turn_count: Optional[int] = None
     error: Optional[str] = None
+    is_token_exhausted: bool = False
 
     @property
     def is_success(self) -> bool:

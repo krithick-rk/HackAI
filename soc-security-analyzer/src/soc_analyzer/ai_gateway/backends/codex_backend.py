@@ -14,10 +14,43 @@ from .base import BaseAIBackend, BackendResult, BackendDisabledError
 from ..schemas import TaskPacket
 
 
+TOKEN_EXHAUSTED_KEYWORDS = (
+    "token limit",
+    "tokens finished",
+    "tokens exhausted",
+    "out of tokens",
+    "token quota",
+    "quota exceeded",
+    "insufficient_quota",
+    "exceeded your current quota",
+    "rate limit",
+    "rate_limit_exceeded",
+    "429",
+    "credit limit",
+    "out of credits",
+    "billing",
+    "maximum context length",
+    "context_length_exceeded",
+    "usage limit",
+    "capacity exhausted",
+    "no tokens remaining",
+    "exhausted",
+)
+
+
+def is_token_exhausted(msg: str) -> bool:
+    """Detects whether an error message indicates model token or quota exhaustion."""
+    if not msg:
+        return False
+    lower = msg.lower()
+    return any(kw in lower for kw in TOKEN_EXHAUSTED_KEYWORDS)
+
+
 class CodexCLIBackend(BaseAIBackend):
     """
-    Secondary terminal backend using Codex CLI.
-    Configurable and callable through the unified BaseAIBackend interface.
+    Terminal backend using Codex CLI.
+    Supports non-interactive JSONL streaming execution, token extraction,
+    and automatic token-exhaustion detection.
     """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -25,6 +58,8 @@ class CodexCLIBackend(BaseAIBackend):
         self.executable = (
             self.config.get("executable")
             or os.environ.get("CODEX_EXECUTABLE")
+            or shutil.which("codex")
+            or "/home/hackdac/.local/bin/codex"
             or "codex"
         )
         self.working_dir = self.config.get("working_dir")
@@ -51,7 +86,14 @@ class CodexCLIBackend(BaseAIBackend):
                 error=f"Codex executable '{self.executable}' not found in PATH or environment."
             )
 
-        cmd = [resolved_exe, "exec", prompt]
+        cmd = [
+            resolved_exe,
+            "exec",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "--json",
+            prompt,
+        ]
         if self.model:
             cmd.extend(["--model", self.model])
         if self.extra_args:
@@ -73,32 +115,82 @@ class CodexCLIBackend(BaseAIBackend):
             )
             elapsed = time.time() - start_time
 
-            if res.returncode != 0:
-                err_msg = res.stderr.strip() or f"CLI returned code {res.returncode}"
+            raw_out = res.stdout.strip()
+            stderr_out = res.stderr.strip()
+
+            # Parse JSONL events from stdout
+            agent_messages: list[str] = []
+            input_tokens = None
+            output_tokens = None
+            event_error = None
+            token_exhausted = False
+
+            for line in raw_out.splitlines():
+                line = line.strip()
+                if not line or not (line.startswith("{") and line.endswith("}")):
+                    continue
+                try:
+                    ev = json.loads(line)
+                    ev_type = ev.get("type")
+                    if ev_type == "item.completed":
+                        item = ev.get("item", {})
+                        if item.get("type") == "agent_message" and "text" in item:
+                            agent_messages.append(item["text"])
+                    elif ev_type == "turn.completed":
+                        usage = ev.get("usage", {})
+                        input_tokens = usage.get("input_tokens")
+                        output_tokens = usage.get("output_tokens")
+                    elif ev_type in ("turn.failed", "error"):
+                        err_obj = ev.get("error") or ev
+                        event_error = str(err_obj)
+                        if is_token_exhausted(event_error):
+                            token_exhausted = True
+                except Exception:
+                    pass
+
+            combined_text = "\n".join(agent_messages).strip() if agent_messages else raw_out
+
+            # Check if token exhausted in error, stderr, or stdout
+            combined_diag = f"{stderr_out} {event_error or ''} {combined_text}"
+            if is_token_exhausted(combined_diag):
+                token_exhausted = True
+
+            if res.returncode != 0 or event_error:
+                err_msg = event_error or stderr_out or f"Codex CLI returned exit code {res.returncode}"
                 return BackendResult(
-                    raw_text=res.stdout,
-                    error=f"Codex CLI failed (exit {res.returncode}): {err_msg}",
+                    raw_text=combined_text,
+                    error=err_msg,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
                     latency=elapsed,
                     wall_time=elapsed,
                     turn_count=1,
+                    is_token_exhausted=token_exhausted,
                 )
 
-            raw_out = res.stdout.strip()
+            # Try parsing structured JSON
             parsed_json = None
-            if raw_out.startswith("{") and raw_out.endswith("}"):
+            clean_text = combined_text
+            if clean_text.startswith("```"):
+                lines = clean_text.splitlines()
+                if len(lines) > 2:
+                    clean_text = "\n".join(lines[1:-1]).strip()
+
+            if clean_text.startswith("{") and clean_text.endswith("}"):
                 try:
-                    parsed_json = json.loads(raw_out)
+                    parsed_json = json.loads(clean_text)
                 except Exception:
                     pass
 
             return BackendResult(
-                raw_text=raw_out,
+                raw_text=clean_text,
                 parsed_output=parsed_json,
-                input_tokens=None,
-                output_tokens=None,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
                 latency=elapsed,
                 wall_time=elapsed,
                 turn_count=1,
+                is_token_exhausted=token_exhausted,
             )
 
         except subprocess.TimeoutExpired:
@@ -111,8 +203,11 @@ class CodexCLIBackend(BaseAIBackend):
             )
         except Exception as e:
             elapsed = time.time() - start_time
+            err_str = str(e)
             return BackendResult(
-                error=f"Codex CLI invocation error: {str(e)}",
+                error=f"Codex CLI invocation error: {err_str}",
                 latency=elapsed,
                 wall_time=elapsed,
+                is_token_exhausted=is_token_exhausted(err_str),
             )
+

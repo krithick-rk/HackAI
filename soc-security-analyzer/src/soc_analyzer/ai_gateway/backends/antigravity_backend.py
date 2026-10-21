@@ -27,6 +27,8 @@ class AntigravityTerminalBackend(BaseAIBackend):
         self.executable = (
             self.config.get("executable")
             or os.environ.get("AGY_EXECUTABLE")
+            or shutil.which("agy")
+            or "/home/hackdac/.local/bin/agy"
             or "agy"
         )
         self.working_dir = self.config.get("working_dir")

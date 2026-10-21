@@ -382,6 +382,23 @@
     }
   }
 
+  async function testQuickConnection(prov: any) {
+    browseNotice = `Testing ${prov.name}...`;
+    try {
+      const res = await apiCall('/api/ai/test', { provider: prov.id });
+      if (res.status === 'ok') {
+        alert(`✓ ${prov.name}: ${res.message} (${res.latency_ms}ms)`);
+      } else {
+        alert(`✕ ${prov.name}: ${res.message}`);
+      }
+    } catch (e: any) {
+      alert(`✕ ${prov.name} test failed: ${e.message}`);
+    } finally {
+      browseNotice = '';
+      fetchAIProviders();
+    }
+  }
+
   async function saveProviderConfig() {
     if (!editingProvider) return;
     savingProvider = true;
@@ -1097,8 +1114,10 @@
             <div class="config-group">
               <label>AI Provider Selection:</label>
               <select bind:value={selectedAIProvider} class="provider-select">
-                <option value="automatic">Automatic Routing (Recommended)</option>
-                {#each aiProvidersCatalog as p}
+                <option value="automatic">⚡ Codex CLI → Antigravity Fallback (Recommended)</option>
+                <option value="codex">OpenAI Codex CLI Only (Local Engine)</option>
+                <option value="antigravity">Google Antigravity CLI (AGY Only)</option>
+                {#each aiProvidersCatalog.filter(p => p.id !== 'codex' && p.id !== 'antigravity') as p}
                   <option value={p.id}>{p.name} ({p.status})</option>
                 {/each}
               </select>
@@ -1384,12 +1403,14 @@
             <label>Default AI Provider Strategy:</label>
             <div class="routing-select-row">
               <select bind:value={aiDefaultProvider} class="provider-select" on:change={() => apiCall('/api/ai/providers', { provider: 'strategy', default_provider: aiDefaultProvider })}>
-                <option value="automatic">Automatic (Select based on task capability & health)</option>
-                {#each aiProvidersCatalog as p}
+                <option value="automatic">⚡ Codex CLI → Antigravity Fallback (Primary Codex, Fallback to AGY)</option>
+                <option value="codex">OpenAI Codex CLI Only (Local Engine)</option>
+                <option value="antigravity">Google Antigravity CLI Only (AGY)</option>
+                {#each aiProvidersCatalog.filter(p => p.id !== 'codex' && p.id !== 'antigravity') as p}
                   <option value={p.id}>{p.name}</option>
                 {/each}
               </select>
-              <span class="subtext">If AI is unavailable or unconfigured, deterministic analysis continues uninterrupted.</span>
+              <span class="subtext">When Codex CLI tokens run out or quota is reached, automatically falls back to Antigravity CLI (agy) seamlessly.</span>
             </div>
           </div>
         </div>
@@ -1397,10 +1418,12 @@
         <!-- Providers Grid -->
         <div class="providers-grid">
           {#each aiProvidersCatalog as p}
-            <div class="provider-card card glass {p.status === 'Connected' ? 'connected-card' : ''}">
+            <div class="provider-card card glass {p.status === 'Connected' || (p.status && p.status.includes('Ready')) ? 'connected-card' : ''}">
               <div class="provider-card-top">
                 <h4>{p.name}</h4>
-                {#if p.status === 'Connected'}
+                {#if p.type === 'cli'}
+                  <span class="badge badge-accent">⚡ Terminal CLI</span>
+                {:else if p.status === 'Connected'}
                   <span class="badge badge-success">● Connected</span>
                 {:else}
                   <span class="badge badge-dim">○ Not configured</span>
@@ -1408,24 +1431,50 @@
               </div>
 
               <div class="provider-details">
-                <div class="p-detail-item">
-                  <span class="p-lbl">Default Model:</span>
-                  <code>{p.default_model || 'Default'}</code>
-                </div>
-                <div class="p-detail-item">
-                  <span class="p-lbl">API Key:</span>
-                  <code class="masked-key">{p.masked_key || 'No key entered'}</code>
-                </div>
-                <div class="p-detail-item">
-                  <span class="p-lbl">Endpoint:</span>
-                  <span class="endpoint-txt">{p.endpoint || 'Standard HTTPS'}</span>
-                </div>
+                {#if p.type === 'cli'}
+                  <div class="p-detail-item">
+                    <span class="p-lbl">Status:</span>
+                    <span class="badge badge-success">● {p.status}</span>
+                  </div>
+                  <div class="p-detail-item">
+                    <span class="p-lbl">Execution Mode:</span>
+                    <code>Non-interactive Subprocess</code>
+                  </div>
+                  <div class="p-detail-item">
+                    <span class="p-lbl">Fallback Strategy:</span>
+                    <span style="font-size: 0.82rem; color: var(--accent-color);">
+                      {p.id === 'codex' ? 'Auto-fallback to Antigravity CLI on token finish' : 'Primary terminal sandbox fallback'}
+                    </span>
+                  </div>
+                {:else}
+                  <div class="p-detail-item">
+                    <span class="p-lbl">Default Model:</span>
+                    <code>{p.default_model || 'Default'}</code>
+                  </div>
+                  <div class="p-detail-item">
+                    <span class="p-lbl">API Key:</span>
+                    <code class="masked-key">{p.masked_key || 'No key entered'}</code>
+                  </div>
+                  <div class="p-detail-item">
+                    <span class="p-lbl">Endpoint:</span>
+                    <span class="endpoint-txt">{p.endpoint || 'Standard HTTPS'}</span>
+                  </div>
+                {/if}
               </div>
 
               <div class="provider-card-footer">
-                <button class="btn btn-sm btn-primary" on:click={() => openEditProviderModal(p)}>
-                  ⚙️ Configure Provider
-                </button>
+                {#if p.type === 'cli'}
+                  <button class="btn btn-sm btn-secondary" on:click={() => testQuickConnection(p)}>
+                    ⚡ Test CLI Connection
+                  </button>
+                  <button class="btn btn-sm btn-outline" on:click={() => openEditProviderModal(p)}>
+                    ⚙️ Options
+                  </button>
+                {:else}
+                  <button class="btn btn-sm btn-primary" on:click={() => openEditProviderModal(p)}>
+                    ⚙️ Configure Provider
+                  </button>
+                {/if}
               </div>
             </div>
           {/each}

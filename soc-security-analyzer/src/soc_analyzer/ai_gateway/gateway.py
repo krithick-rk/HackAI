@@ -61,10 +61,30 @@ class AIGateway:
             "api": DirectAPIBackend(providers_cfg.get("api", {"enabled": False})),
         }
 
-        # Terminal policy
+        # Terminal policy & token exhaustion state
         terminal_cfg = self.config.get("ai", {}).get("terminal", {})
         self.preferred_backend = terminal_cfg.get("preferred_backend", "antigravity")
         self.fallback_backend = terminal_cfg.get("fallback_backend", "codex")
+        self._codex_token_exhausted: bool = False
+
+        # Read active preference from workspace/ai_providers.json if present (and not in unit tests)
+        if not os.environ.get("PYTEST_CURRENT_TEST"):
+            ai_cfg_file = os.path.abspath("workspace/ai_providers.json")
+            if os.path.exists(ai_cfg_file):
+                try:
+                    with open(ai_cfg_file, "r", encoding="utf-8") as f:
+                        mgr_data = json.load(f)
+                        dp = mgr_data.get("default_provider", "automatic")
+                        if dp in ("codex", "automatic", "codex_then_antigravity"):
+                            self.preferred_backend = "codex"
+                            self.fallback_backend = "antigravity"
+                        elif dp == "antigravity":
+                            self.preferred_backend = "antigravity"
+                            self.fallback_backend = "codex"
+                        elif dp in self.backends:
+                            self.preferred_backend = dp
+                except Exception:
+                    pass
 
     def _load_config(self, config: Optional[Dict[str, Any]], config_path: Optional[str]) -> Dict[str, Any]:
         """Loads gateway configuration with safe defaults."""
@@ -254,15 +274,25 @@ class AIGateway:
     def _select_backend(self) -> Optional[BaseAIBackend]:
         """
         Terminal-first selection policy:
-        Preferred terminal (Antigravity) -> Fallback terminal (Codex) -> API fallback.
+        Preferred terminal (Codex or Antigravity) -> Fallback terminal -> API fallback.
+        If Codex token was exhausted, automatically bypasses to Antigravity.
         """
+        pref_name = self.preferred_backend
+        fall_name = self.fallback_backend
+
+        # If Codex token was marked exhausted and it was preferred, route directly to Antigravity
+        if pref_name == "codex" and self._codex_token_exhausted:
+            fall = self.backends.get(fall_name) or self.backends.get("antigravity")
+            if fall and fall.is_enabled():
+                return fall
+
         # Try preferred terminal
-        pref = self.backends.get(self.preferred_backend)
+        pref = self.backends.get(pref_name)
         if pref and pref.is_enabled():
             return pref
 
         # Try fallback terminal
-        fall = self.backends.get(self.fallback_backend)
+        fall = self.backends.get(fall_name)
         if fall and fall.is_enabled():
             return fall
 
@@ -283,6 +313,7 @@ class AIGateway:
     ) -> GatewayResponse:
         """
         Executes call with bounded retries for transport and structured output validation.
+        Automatically falls back from Codex CLI to Antigravity CLI if Codex token is finished or exhausted.
         """
         max_attempts = max(1, self.budget.max_retries + 1)
         current_backend = primary_backend
@@ -296,10 +327,32 @@ class AIGateway:
 
                 if not result.is_success:
                     last_error = result.error or "Unknown backend error"
-                    # Try switching to fallback terminal if primary failed on first attempt
+
+                    # Check for token exhaustion in Codex
+                    token_done = getattr(result, "is_token_exhausted", False)
+                    if not token_done and "codex" in current_backend.name.lower():
+                        from .backends.codex_backend import is_token_exhausted
+                        token_done = is_token_exhausted(last_error)
+
+                    if token_done:
+                        self._codex_token_exhausted = True
+
+                    # Fall back to Antigravity if Codex token is finished or failed
+                    if (token_done or current_backend.name == "codex") and "antigravity" in self.backends:
+                        agy_cand = self.backends.get("antigravity")
+                        if agy_cand and agy_cand.is_enabled() and current_backend.name != "antigravity":
+                            print(
+                                f"[AI Gateway] Codex CLI token finished / failed ({last_error}). "
+                                f"Automatically falling back to Antigravity CLI (agy)..."
+                            )
+                            current_backend = agy_cand
+                            time.sleep(0.05)
+                            continue
+
+                    # Fallback to designated fallback terminal if primary failed on first attempt
                     if attempt == 0 and current_backend.name == self.preferred_backend:
                         fallback_cand = self.backends.get(self.fallback_backend)
-                        if fallback_cand and fallback_cand.is_enabled():
+                        if fallback_cand and fallback_cand.is_enabled() and fallback_cand.name != current_backend.name:
                             current_backend = fallback_cand
                     time.sleep(0.05 * (2 ** attempt))
                     continue
